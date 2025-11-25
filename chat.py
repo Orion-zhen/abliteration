@@ -30,6 +30,9 @@ parser.add_argument(
 parser.add_argument(
     "--max-new-tokens", "-n", type=int, default=256, help="Max new tokens to generate"
 )
+parser.add_argument(
+    "--system-prompt", "-s", type=str, default=None, help="System prompt"
+)
 quant = parser.add_mutually_exclusive_group()
 quant.add_argument(
     "--load-in-4bit",
@@ -75,7 +78,7 @@ if __name__ == "__main__":
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
         trust_remote_code=True,
-        torch_dtype=precision,
+        dtype=precision,
         low_cpu_mem_usage=True,
         device_map=args.device,
         quantization_config=quant_config,
@@ -86,6 +89,9 @@ if __name__ == "__main__":
     )
 
     conversation = []
+    if args.system_prompt is not None:
+        print(f"System Prompt: {args.system_prompt}")
+        conversation.append({"role": "system", "content": args.system_prompt})
     streamer = TextStreamer(tokenizer)
     print("Type /clear to clear history, /exit to quit.")
     while True:

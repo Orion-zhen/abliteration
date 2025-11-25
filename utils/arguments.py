@@ -39,10 +39,22 @@ parser.add_argument(
     "--skip-end", type=int, default=0, help="Number of layers to skip at the end"
 )
 parser.add_argument(
-    "--layer-fraction",
+    "--refusal-quantile",
     type=float,
-    default=1.0,
-    help="Fraction of layers to use for refusal_dir calculation",
+    default=0.995,
+    help="Quantile for magnitude sparsification of refusal direction (default: 0.995). Set to 1.0 to disable.",
+)
+parser.add_argument(
+    "--refusal-top-k",
+    type=int,
+    default=3,
+    help="Number of top layers to aggregate for refusal direction calculation (default: 3).",
+)
+parser.add_argument(
+    "--batch-size",
+    type=int,
+    default=4,
+    help="Batch size for computing refusal directions (default: 4).",
 )
 parser.add_argument(
     "--scale-factor",
@@ -125,7 +137,9 @@ def generate_config(args: Namespace) -> dict[str, str | int | float | None]:
     config.setdefault("output", args.output)
     config.setdefault("skip-begin", args.skip_begin)
     config.setdefault("skip-end", args.skip_end)
-    config.setdefault("layer-fraction", args.layer_fraction)
+    config.setdefault("refusal-quantile", args.refusal_quantile)
+    config.setdefault("refusal-top-k", args.refusal_top_k)
+    config.setdefault("batch-size", args.batch_size)
     config.setdefault("scale-factor", args.scale_factor)
     config.setdefault("flash-attn", args.flash_attn)
     config.setdefault("data-harmful", args.data_harmful)
