@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizer, PreTrainedTokenizerFast
 from typing import List, Dict, Union
+from utils.vector_utils import remove_orthogonal_projection
 
 def magnitude_clip(tensor: torch.Tensor, max_val: float) -> torch.Tensor:
     """Clips tensor values to [-max_val, max_val] by magnitude preserving sign."""
@@ -62,9 +63,9 @@ def welford_gpu_batched_multilayer_float32(
 
         # Process layers with Welford in float32
         for layer_idx in layer_indices:
-            # Cast to float32 for accumulation
+            # Cast to float32 for accumulation and move to CPU
             # Shape: [batch, 1, hidden] -> [batch, hidden]
-            current_hidden = hidden_states[layer_idx][:, pos, :].float()
+            current_hidden = hidden_states[layer_idx][:, pos, :].to("cpu", dtype=torch.float32)
             
             if (clip < 1.0):
                  # Simple clamping if clip is small? Ref logic: magnitude_clip(current_hidden, clip)
@@ -119,7 +120,6 @@ def compute_refusals(
     harmful_list: list[str],
     harmless_list: list[str],
     batch_size: int = 32,
-    projected: bool = True,
     output_dir: str = ".",
 ) -> Dict[str, torch.Tensor]:
     """
@@ -181,11 +181,7 @@ def compute_refusals(
         # Refusal Direction Calculation (in double for precision)
         refusal_dir = (target_harmful.double() - target_harmless.double()).float()
 
-        if projected:
-            # Orthogonalize against harmless mean (Pre-computation projection)
-            harmless_normed = torch.nn.functional.normalize(target_harmless.float(), dim=0)
-            projection = torch.dot(refusal_dir, harmless_normed)
-            refusal_dir = refusal_dir - projection * harmless_normed
+        # Projection logic moved to explicit call via project_refusal_directions
         
         results[f'refuse_{layer}'] = refusal_dir
 
@@ -228,7 +224,7 @@ def load_measurements(path: str) -> tuple[dict, dict]:
     print("Measurements loaded.")
     return results, layer_scores
 
-def project_refusal_directions(results: dict):
+def inlayer_results_projection(results: dict[str, torch.Tensor]):
     """
     Applies orthogonal projection to refusal directions in results.
     Refusal = Refusal - proj(Refusal, Harmless)
@@ -244,8 +240,6 @@ def project_refusal_directions(results: dict):
             
             if harmless_vec is not None:
                 harmless_vec = harmless_vec.float()
-                harmless_normed = torch.nn.functional.normalize(harmless_vec, dim=0)
-                projection = torch.dot(refusal_vec, harmless_normed)
-                refusal_vec = refusal_vec - projection * harmless_normed
+                refusal_vec = remove_orthogonal_projection(refusal_vec, harmless_vec)
                 results[key] = refusal_vec # Update in place
     print("Projection applied.")
