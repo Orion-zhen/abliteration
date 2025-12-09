@@ -27,23 +27,23 @@ def main():
     print("="*60)
 
     # Check if we should load measurements
-    if config.refusal.measurements_load_path:
-        results, layer_scores = load_measurements(config.refusal.measurements_load_path)
+    if config.measurements.load_path:
+        results, layer_scores = load_measurements(config.measurements.load_path)
     else:
         # Load Model for Inference
-        print(f"Loading model {config.model_id} for measurement...")
+        print(f"Loading model {config.model} for measurement...")
         model = AutoModelForCausalLM.from_pretrained(
-            config.model_id,
-            dtype=getattr(torch, config.dtype),
+            config.model,
+            torch_dtype="auto",
             trust_remote_code=True,
             device_map="auto",
-            attn_implementation="flash_attention_2" if config.flash_attn else None,
+            attn_implementation="flash_attention_2" if config.inference.flash_attn else None,
         )
-        tokenizer = AutoTokenizer.from_pretrained(config.model_id, trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(config.model, trust_remote_code=True)
         
         # Load Data
-        harmful_data = load_data(config.data.harmful_path)
-        harmless_data = load_data(config.data.harmless_path)
+        harmful_data = load_data(config.measurements.harmful_prompts)
+        harmless_data = load_data(config.measurements.harmless_prompts)
         
         # Compute Refusals (Raw)
         results, layer_scores = compute_refusals(
@@ -51,14 +51,14 @@ def main():
             tokenizer=tokenizer,
             harmful_list=harmful_data,
             harmless_list=harmless_data,
-            batch_size=config.data.batch_size,
+            batch_size=config.inference.batch_size,
             # projected=False, -> Removed argument
             output_dir=config.output_dir
         )
         
         # Save Measurements if requested
-        if config.refusal.measurements_save_path:
-            save_measurements(results, layer_scores, config.refusal.measurements_save_path)
+        if config.measurements.save_path:
+            save_measurements(results, layer_scores, config.measurements.save_path)
         
         # Unload Model
         del model
@@ -75,9 +75,10 @@ def main():
     analyze_results(results, config.output_dir)
     
     # Calculate Global Refusal Direction (Top-K Average)
+    # Calculate Global Refusal Direction (Top-K Average)
     sorted_layers = sorted(layer_scores.items(), key=lambda x: x[1], reverse=True)
-    top_k_indices = [x[0] for x in sorted_layers[:config.refusal.top_k]]
-    print(f"Refusal Calculation: Selected Top-{config.refusal.top_k} layers: {top_k_indices}")
+    top_k_indices = [x[0] for x in sorted_layers[:config.ablation.top_k]]
+    print(f"Refusal Calculation: Selected Top-{config.ablation.top_k} layers: {top_k_indices}")
 
     # Gather refusal vectors from top-k layers
     selected_refusals = []
@@ -86,9 +87,9 @@ def main():
         # Use configured sparsify strategy
         sparsed_local_refusal_dir = sparsify_tensor(
             local_refusal_dir, 
-            method=config.refusal.sparsify_method,
-            threshold=config.refusal.magnitude_threshold if config.refusal.sparsify_method == "magnitude" else config.refusal.quantile,
-            k=config.refusal.top_k # Logic reuse top_k for topk method if used, but user asked for mag/per
+            method=config.ablation.sparsify_method,
+            threshold=config.ablation.magnitude_threshold if config.ablation.sparsify_method == "magnitude" else config.ablation.quantile,
+            k=config.ablation.top_k # Logic reuse top_k for topk method if used, but user asked for mag/per
         )
         selected_refusals.append(sparsed_local_refusal_dir)
     
