@@ -70,15 +70,15 @@ def copy_model_artifacts(config: ModelConfig, output_path: Path, index_path: Opt
     for filename in config_files:
         try:
             # Wrap in try-except to simple skip missing files
-            path = cached_file(config.model_id, filename)
+            path = cached_file(config.model, filename)
             if path and Path(path).exists():
                 shutil.copy(path, output_path / filename)
             else:
                 # Check local if cached_file returns None or fail
                 # But cached_file handles local paths too.
-                # If model_id is local path, check directly
-                if (Path(config.model_id) / filename).exists():
-                     shutil.copy(Path(config.model_id) / filename, output_path / filename)
+                # If model is local path, check directly
+                if (Path(config.model) / filename).exists():
+                     shutil.copy(Path(config.model) / filename, output_path / filename)
         except Exception as e:
             # Just log and skip
             print(f"  Skipping {filename}")

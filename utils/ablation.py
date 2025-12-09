@@ -135,7 +135,7 @@ def run_sharded_ablation(
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Resolve Paths
-    index_path, model_dir, weight_map, shards = resolve_model_paths(config.model_id)
+    index_path, model_dir, weight_map, shards = resolve_model_paths(config.model)
     
     # Process Shards
     for shard_file in tqdm(shards, desc="Processing Shards"):
