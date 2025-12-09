@@ -1,6 +1,6 @@
-
 import sys
 import shutil
+
 
 class Output:
     GREEN = "\033[92m"
@@ -19,7 +19,12 @@ class Output:
     @staticmethod
     def header(title: str):
         width = shutil.get_terminal_size().columns
-        print("\n" + Output._colorize(f" {title.upper()} ", Output.BOLD + Output.BLUE).center(width, "="))
+        print(
+            "\n"
+            + Output._colorize(f" {title.upper()} ", Output.BOLD + Output.BLUE).center(
+                width, "="
+            )
+        )
 
     @staticmethod
     def subheader(title: str):
@@ -40,7 +45,7 @@ class Output:
     @staticmethod
     def error(msg: str):
         print(f"{Output._colorize('✖', Output.RED)} {msg}")
-    
+
     @staticmethod
     def key_value(key: str, value: str, indent: int = 2):
         print(f"{' ' * indent}{Output._colorize(key + ':', Output.BOLD)} {value}")
@@ -52,22 +57,22 @@ class Output:
         """
         if not rows:
             return
-        
+
         if not headers:
             headers = list(rows[0].keys())
-        
+
         # Calculate column widths
         widths = {h: len(h) for h in headers}
         for row in rows:
             for h in headers:
                 val = str(row.get(h, ""))
                 widths[h] = max(widths[h], len(val))
-        
+
         # Print Header
         header_row = "  ".join(h.ljust(widths[h]) for h in headers)
         print(Output._colorize(header_row, Output.BOLD))
         print("  ".join("-" * widths[h] for h in headers))
-        
+
         # Print Rows
         for row in rows:
             print("  ".join(str(row.get(h, "")).ljust(widths[h]) for h in headers))

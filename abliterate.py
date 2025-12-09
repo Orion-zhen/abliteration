@@ -5,14 +5,14 @@ import shutil
 import os
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
+from utils.output import Output
+from utils.plot import analyze_results
+from utils.math_utils import sparsify_tensor
+from utils.ablation import run_sharded_ablation
 from utils.config import load_config, print_config
 from utils.model import compute_refusals, inlayer_results_projection
 from utils.io import load_data, save_measurements, load_measurements
-from utils.math_utils import sparsify_tensor
-from utils.ablation import run_sharded_ablation
-from utils.plot import analyze_results
 
-from utils.output import Output
 
 def main():
     parser = argparse.ArgumentParser(description="End-to-End Sharded Abliteration")
@@ -38,14 +38,16 @@ def main():
             dtype="auto",
             trust_remote_code=True,
             device_map="auto",
-            attn_implementation="flash_attention_2" if config.inference.flash_attn else None,
+            attn_implementation=(
+                "flash_attention_2" if config.inference.flash_attn else None
+            ),
         )
         tokenizer = AutoTokenizer.from_pretrained(config.model, trust_remote_code=True)
-        
+
         # Load Data
         harmful_data = load_data(config.measurements.harmful_prompts)
         harmless_data = load_data(config.measurements.harmless_prompts)
-        
+
         # Compute Refusals (Raw)
         results, layer_scores = compute_refusals(
             model=model,
@@ -53,15 +55,14 @@ def main():
             harmful_list=harmful_data,
             harmless_list=harmless_data,
             batch_size=config.inference.batch_size,
-            # projected=False, -> Removed argument
-            output_dir=config.output_dir or "." # Handle None safely if used
+            output_dir=config.output_dir or ".",  # Handle None safely if used
         )
-        
+
         # Save Measurements if requested
         if config.measurements.save_path:
             save_measurements(results, layer_scores, config.measurements.save_path)
             Output.success(f"Measurements saved to {config.measurements.save_path}")
-        
+
         # Unload Model
         del model
         del tokenizer
@@ -72,7 +73,7 @@ def main():
     # Apply Projection if requested (Method based)
     if config.ablation.method in ["biprojection", "full"]:
         inlayer_results_projection(results)
-    
+
     # Determine directory for plots
     plot_save_dir = config.output_dir
     if not plot_save_dir and config.measurements.save_path:
@@ -81,48 +82,53 @@ def main():
     # Analyze Refusal Directions
     if plot_save_dir:
         analyze_results(results, plot_save_dir)
-    
+
     if config.output_dir:
         # Calculate Global Refusal Direction (Top-K Average)
         sorted_layers = sorted(layer_scores.items(), key=lambda x: x[1], reverse=True)
-        top_k_indices = [x[0] for x in sorted_layers[:config.ablation.top_k]]
-        Output.info(f"Selected Top-{config.ablation.top_k} layers for refusal calculation: {top_k_indices}")
-    
+        top_k_indices = [x[0] for x in sorted_layers[: config.ablation.top_k]]
+        Output.info(
+            f"Selected Top-{config.ablation.top_k} layers for refusal calculation: {top_k_indices}"
+        )
+
         # Gather refusal vectors from top-k layers
         selected_refusals = []
         for idx in top_k_indices:
-            local_refusal_dir = results[f'refuse_{idx}']
+            local_refusal_dir = results[f"refuse_{idx}"]
             # Use configured sparsify strategy
             sparsed_local_refusal_dir = sparsify_tensor(
-                local_refusal_dir, 
+                local_refusal_dir,
                 method=config.ablation.sparsify_method,
-                threshold=config.ablation.magnitude_threshold if config.ablation.sparsify_method == "magnitude" else config.ablation.quantile,
-                k=config.ablation.top_k # Logic reuse top_k for topk method if used
+                threshold=(
+                    config.ablation.magnitude_threshold
+                    if config.ablation.sparsify_method == "magnitude"
+                    else config.ablation.quantile
+                ),
+                k=config.ablation.top_k,  # Logic reuse top_k for topk method if used
             )
             selected_refusals.append(sparsed_local_refusal_dir)
-        
+
         global_refusal_dir = torch.stack(selected_refusals).mean(dim=0)
         global_refusal_dir = torch.nn.functional.normalize(global_refusal_dir, dim=0)
-        
+
         Output.success("Global refusal direction computed.")
 
         # 3. Sharded Ablation Phase
-        # Header is inside run_sharded_ablation now? No, wait. 
-        # I removed it from abliterate.py but added it to run_sharded_ablation.
-        
+
         run_sharded_ablation(
             config=config,
             global_refusal_dir=global_refusal_dir,
-            measurement_results=results
+            measurement_results=results,
         )
-        
+
         # Save config details
         output_config_path = f"{config.output_dir}/abliteration_config.yaml"
         shutil.copy(args.config, output_config_path)
-        
+
         Output.success(f"Job Complete! Abliterated model saved to {config.output_dir}")
     else:
         Output.warning("Skipping model ablation as 'output_dir' is not specified.")
+
 
 if __name__ == "__main__":
     main()

@@ -1,9 +1,10 @@
 import torch
 from tqdm import tqdm
+from typing import Dict
 from transformers import PreTrainedModel, PreTrainedTokenizer, PreTrainedTokenizerFast
-from typing import List, Dict, Union
 
-from utils.math_utils import remove_orthogonal_projection, magnitude_clip
+from utils.math_utils import remove_orthogonal_projection
+
 
 def welford_gpu_batched_multilayer_float32(
     formatted_prompts: list[str],
@@ -20,23 +21,23 @@ def welford_gpu_batched_multilayer_float32(
     Strictly follows reference logic: Left padding + model.generate(max_new_tokens=1).
     """
     tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = 'left'
+    tokenizer.padding_side = "left"
 
     means = {layer_idx: None for layer_idx in layer_indices}
     counts = {layer_idx: 0 for layer_idx in layer_indices}
 
     for i in tqdm(range(0, len(formatted_prompts), batch_size), desc=desc):
-        batch_prompts = formatted_prompts[i:i+batch_size]
+        batch_prompts = formatted_prompts[i : i + batch_size]
 
         batch_encoding = tokenizer(
             batch_prompts,
             padding=True,
-            padding_side='left',
+            padding_side="left",
             return_tensors="pt",
         )
-        
-        batch_input = batch_encoding['input_ids'].to(model.device)
-        batch_mask = batch_encoding['attention_mask'].to(model.device)
+
+        batch_input = batch_encoding["input_ids"].to(model.device)
+        batch_mask = batch_encoding["attention_mask"].to(model.device)
 
         # Use generate to get hidden states at the first generated token position
         # This is the "next token prediction" state for the last token of the prompt.
@@ -48,27 +49,31 @@ def welford_gpu_batched_multilayer_float32(
             output_hidden_states=True,
             pad_token_id=tokenizer.eos_token_id,
         )
-        
+
         del batch_input, batch_mask
         # hidden_states is tuple of tuples: (generation_step, layer_idx)
         # We want Step 0.
-        hidden_states = raw_output.hidden_states[0]  
+        hidden_states = raw_output.hidden_states[0]
         del raw_output
 
         # Process layers with Welford in float32
         for layer_idx in layer_indices:
             # Cast to float32 for accumulation and move to CPU
             # Shape: [batch, 1, hidden] -> [batch, hidden]
-            current_hidden = hidden_states[layer_idx][:, pos, :].to("cpu", dtype=torch.float32)
-            
-            if (clip < 1.0):
-                 # Simple clamping if clip is small? Ref logic: magnitude_clip(current_hidden, clip)
-                 # Actually ref logic uses a custom function, here we use simple clamp or assume logic
-                 # Check ref logic: it calls magnitude_clip which likely does clamp.
-                 # Wait, typical clip usually implies if |x| > threshold -> scale.
-                 # Let's trust torch.clamp for now or check ref utils/clip.py if strict alignment needed.
-                 # For now, implementing standard clamping.
-                 current_hidden = torch.clamp(current_hidden, min=-clip, max=clip) # Placeholder for clip logic
+            current_hidden = hidden_states[layer_idx][:, pos, :].to(
+                "cpu", dtype=torch.float32
+            )
+
+            if clip < 1.0:
+                # Simple clamping if clip is small? Ref logic: magnitude_clip(current_hidden, clip)
+                # Actually ref logic uses a custom function, here we use simple clamp or assume logic
+                # Check ref logic: it calls magnitude_clip which likely does clamp.
+                # Wait, typical clip usually implies if |x| > threshold -> scale.
+                # Let's trust torch.clamp for now or check ref utils/clip.py if strict alignment needed.
+                # For now, implementing standard clamping.
+                current_hidden = torch.clamp(
+                    current_hidden, min=-clip, max=clip
+                )  # Placeholder for clip logic
 
             batch_size_actual = current_hidden.size(dim=0)
             total_count = counts[layer_idx] + batch_size_actual
@@ -80,18 +85,19 @@ def welford_gpu_batched_multilayer_float32(
                 means[layer_idx] += delta.sum(dim=0) / total_count
 
             counts[layer_idx] = total_count
-            
+
         del hidden_states
         torch.cuda.empty_cache()
 
     # Move results to CPU
     return_dict = {
-        layer_idx: mean.to(device="cpu") 
-        for layer_idx, mean in means.items()
+        layer_idx: mean.to(device="cpu") for layer_idx, mean in means.items()
     }
     return return_dict
 
+
 from utils.output import Output
+
 
 def compute_refusals(
     model: PreTrainedModel,
@@ -104,14 +110,14 @@ def compute_refusals(
     """
     Computes harmful and harmless means, and derives refusal directions.
     """
-    
+
     # Identify layers - Robust logic from ref implementation
     layer_base = model
     if hasattr(layer_base, "model"):
         layer_base = layer_base.model
     if hasattr(layer_base, "language_model"):
         layer_base = layer_base.language_model
-    
+
     if hasattr(layer_base, "layers"):
         num_layers = len(layer_base.layers)
     elif hasattr(model.config, "num_hidden_layers"):
@@ -128,8 +134,9 @@ def compute_refusals(
             tokenizer.apply_chat_template(
                 [{"role": "user", "content": p}],
                 add_generation_prompt=True,
-                tokenize=False
-            ) for p in prompts
+                tokenize=False,
+            )
+            for p in prompts
         ]
 
     Output.info("Formatting prompts...")
@@ -138,12 +145,22 @@ def compute_refusals(
 
     Output.info("Computing Harmful Means...")
     harmful_means = welford_gpu_batched_multilayer_float32(
-        harmful_formatted, "Harmful Batches", model, tokenizer, focus_layers, batch_size=batch_size
+        harmful_formatted,
+        "Harmful Batches",
+        model,
+        tokenizer,
+        focus_layers,
+        batch_size=batch_size,
     )
 
     Output.info("Computing Harmless Means...")
     harmless_means = welford_gpu_batched_multilayer_float32(
-        harmless_formatted, "Harmless Batches", model, tokenizer, focus_layers, batch_size=batch_size
+        harmless_formatted,
+        "Harmless Batches",
+        model,
+        tokenizer,
+        focus_layers,
+        batch_size=batch_size,
     )
 
     results = {}
@@ -153,28 +170,31 @@ def compute_refusals(
     for layer in tqdm(focus_layers, desc="Processing Layers"):
         target_harmful = harmful_means[layer]
         target_harmless = harmless_means[layer]
-        
-        results[f'harmful_{layer}'] = target_harmful
-        results[f'harmless_{layer}'] = target_harmless
+
+        results[f"harmful_{layer}"] = target_harmful
+        results[f"harmless_{layer}"] = target_harmless
 
         # Refusal Direction Calculation (in double for precision)
         refusal_dir = (target_harmful.double() - target_harmless.double()).float()
 
         # Projection logic moved to explicit call via project_refusal_directions
-        
-        results[f'refuse_{layer}'] = refusal_dir
+
+        results[f"refuse_{layer}"] = refusal_dir
 
         # Calculate Score for Plotting (SNR * Dissimilarity)
         refusal_norm = refusal_dir.norm().item()
         max_bg_norm = max(target_harmful.norm().item(), target_harmless.norm().item())
         snr = refusal_norm / (max_bg_norm + 1e-6)
-        
-        cos_sim = torch.nn.functional.cosine_similarity(target_harmful, target_harmless, dim=0).item()
+
+        cos_sim = torch.nn.functional.cosine_similarity(
+            target_harmful, target_harmless, dim=0
+        ).item()
         dissimilarity = 1.0 - cos_sim
         score = snr * dissimilarity
         layer_scores[layer] = score
 
     return results, layer_scores
+
 
 def inlayer_results_projection(results: dict[str, torch.Tensor]):
     """
@@ -185,13 +205,13 @@ def inlayer_results_projection(results: dict[str, torch.Tensor]):
     keys = list(results.keys())
     for key in keys:
         if key.startswith("refuse_"):
-            layer_idx = key.split("_")[1] # refuse_0 -> 0
-            
+            layer_idx = key.split("_")[1]  # refuse_0 -> 0
+
             refusal_vec = results[key].float()
-            harmless_vec = results.get(f'harmless_{layer_idx}')
-            
+            harmless_vec = results.get(f"harmless_{layer_idx}")
+
             if harmless_vec is not None:
                 harmless_vec = harmless_vec.float()
                 refusal_vec = remove_orthogonal_projection(refusal_vec, harmless_vec)
-                results[key] = refusal_vec # Update in place
+                results[key] = refusal_vec  # Update in place
     Output.success("Projection applied.")
