@@ -8,8 +8,9 @@ from safetensors.torch import load_file, save_file
 from transformers.utils import cached_file
 
 from utils.config import ModelConfig
-from utils.modifier import modify_tensor_norm_preserved
+from utils.modifier import modify_tensor_norm_preserved, modify_tensor_simple
 from utils.sparsify import percentile_sparsify, sparsify_vector
+from utils.vector_utils import remove_orthogonal_projection
 
 def run_sharded_ablation(
     config: ModelConfig,
@@ -136,24 +137,34 @@ def run_sharded_ablation(
                          ) 
                          refusal_vec = torch.nn.functional.normalize(refusal_vec, dim=0)
 
+                # Determine Method Flags
+                method = config.ablation.method
+                use_biprojection_apply = method in ["biprojection", "full"]
+                use_norm_preserving = method in ["norm_preserving", "full", "norm-preserving"]
+
                 # Get Harmless Mean for Orthogonalization (Biprojection)
                 # Ensure harmless_vec is same device/dtype
                 harmless_vec = measurement_results[f'harmless_{layer_idx}'].float()
                         
-                if config.refusal.projected:
+                if use_biprojection_apply:
                     # Orthogonalize refusal_vec w.r.t local harmless_vec
                      device = refusal_vec.device
                      harmless_vec = harmless_vec.to(device)
                      
-                     harmless_normed = torch.nn.functional.normalize(harmless_vec, dim=0)
-                     projection = torch.dot(refusal_vec, harmless_normed)
-                     refusal_vec = refusal_vec - projection * harmless_normed
+                     harmless_vec = harmless_vec.to(device)
+                     
+                     refusal_vec = remove_orthogonal_projection(refusal_vec, harmless_vec)
+                     # For stability, we might want to normalize again or not.
+                     # Original code normalized here:
                      refusal_vec = torch.nn.functional.normalize(refusal_vec, dim=0)
 
                 # Apply Modification
-                print(f"  Modifying {key} (Layer {layer_idx}) Scale={scale}")
+                print(f"  Modifying {key} (Layer {layer_idx}) Scale={scale} Method={method}")
                 W = state_dict[key]
-                new_W = modify_tensor_norm_preserved(W, refusal_vec, scale_factor=scale)
+                if use_norm_preserving:
+                    new_W = modify_tensor_norm_preserved(W, refusal_vec, scale_factor=scale)
+                else:
+                     new_W = modify_tensor_simple(W, refusal_vec, scale_factor=scale)
                 state_dict[key] = new_W
                 modified = True
                 

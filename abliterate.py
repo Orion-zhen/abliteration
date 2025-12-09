@@ -5,7 +5,7 @@ import shutil
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from utils.config import load_config, print_config
-from utils.measure import compute_refusals, save_measurements, load_measurements, project_refusal_directions
+from utils.measure import compute_refusals, save_measurements, load_measurements, inlayer_results_projection
 from utils.data import load_data
 from utils.sparsify import percentile_sparsify, sparsify_vector
 from utils.ablate import run_sharded_ablation
@@ -51,7 +51,7 @@ def main():
             harmful_list=harmful_data,
             harmless_list=harmless_data,
             batch_size=config.data.batch_size,
-            projected=False, # Always compute unprojected first
+            # projected=False, -> Removed argument
             output_dir=config.output_dir
         )
         
@@ -66,9 +66,9 @@ def main():
         torch.cuda.empty_cache()
         print("Model unloaded. Memory cleared.")
 
-    # Apply Projection if requested
-    if config.refusal.projected:
-        project_refusal_directions(results)
+    # Apply Projection if requested (Method based)
+    if config.ablation.method in ["biprojection", "full"]:
+        inlayer_results_projection(results)
     
     # Calculate Global Refusal Direction (Top-K Average)
     sorted_layers = sorted(layer_scores.items(), key=lambda x: x[1], reverse=True)

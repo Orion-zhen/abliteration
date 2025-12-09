@@ -16,7 +16,7 @@ class DataConfig:
 class RefusalConfig:
     quantile: float = 0.995
     top_k: int = 10
-    projected: bool = True  # Default to True for safety (orthogonality)
+    # projected: bool = True  # Removed
     # Measurements I/O
     measurements_save_path: Optional[str] = None
     measurements_load_path: Optional[str] = None
@@ -27,7 +27,12 @@ class RefusalConfig:
 
 @dataclass
 class AblationConfig:
-    method: str = "biprojected"
+    # Options: "simple", "biprojection", "norm-preserving", "full"
+    # simple: No biprojection, No norm-preserving
+    # biprojection: Biprojection, No norm-preserving
+    # norm-preserving: No biprojection, Norm-preserving
+    # full: Biprojection, Norm-preserving
+    method: str = "full" 
     global_scale: float = 1.0
     # Overrides: layer_idx -> {source_layer: int, scale: float}
     layer_overrides: Dict[Union[int, str], Dict[str, Any]] = field(default_factory=dict)
@@ -72,7 +77,7 @@ def load_config(config_path: str) -> ModelConfig:
     refusal_config = RefusalConfig(
         quantile=ref_raw.get("quantile", 0.995),
         top_k=ref_raw.get("top_k", 10),
-        projected=ref_raw.get("projected", True),
+        # projected=ref_raw.get("projected", True), -> Removed, handled by ablation method now
         measurements_save_path=ref_raw.get("measurements_save_path"),
         measurements_load_path=ref_raw.get("measurements_load_path"),
         sparsify_method=ref_raw.get("sparsify_method", "percentile"),
@@ -82,7 +87,7 @@ def load_config(config_path: str) -> ModelConfig:
     # Parse Ablation Section
     ab_raw = raw_config.get("ablation", {})
     ablation_config = AblationConfig(
-        method=ab_raw.get("method", "biprojected"),
+        method=ab_raw.get("method", "full"),
         global_scale=ab_raw.get("global_scale", 1.0),
         layer_overrides=ab_raw.get("layer_overrides", {})
     )
@@ -116,7 +121,7 @@ def print_config(config: ModelConfig):
     print("Refusal Calculation:")
     print(f"  Quantile: {config.refusal.quantile}")
     print(f"  Top K Layers: {config.refusal.top_k}")
-    print(f"  Projected (Measurement): {config.refusal.projected}")
+    # print(f"  Projected (Measurement): {config.refusal.projected}") -> Removed
     print(f"  Measurements Load Path: {config.refusal.measurements_load_path}")
     print(f"  Measurements Save Path: {config.refusal.measurements_save_path}")
     print("-" * 60)

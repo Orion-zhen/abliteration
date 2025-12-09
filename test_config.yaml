@@ -15,9 +15,9 @@ refusal_calculation:
   projected: true
 
 ablation:
-  method: "biprojected"
+  method: "full" # Options: simple, biprojection, norm-preserving, full
   global_scale: 1.0
-  layer_overrides:
+  layer_overrides: {}
     # Test override logic
-    24:
-      scale: 0.5
+    # 24:
+    #   scale: 0.5
