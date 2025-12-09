@@ -12,27 +12,27 @@ from utils.math_utils import sparsify_tensor
 from utils.ablation import run_sharded_ablation
 from utils.plot import analyze_results
 
+from utils.output import Output
+
 def main():
     parser = argparse.ArgumentParser(description="End-to-End Sharded Abliteration")
     parser.add_argument("config", type=str, help="Path to YAML configuration file")
     args = parser.parse_args()
 
     # 1. Load Config
-    print(f"Loading configuration from {args.config}...")
+    Output.info(f"Loading configuration from {args.config}...")
     config = load_config(args.config)
     print_config(config)
 
     # 2. Measurement Phase
-    print("\n" + "="*60)
-    print("PHASE 1: Measurement & Refusal Calculation")
-    print("="*60)
+    Output.header("Phase 1: Measurement & Refusal Calculation")
 
     # Check if we should load measurements
     if config.measurements.load_path:
         results, layer_scores = load_measurements(config.measurements.load_path)
     else:
         # Load Model for Inference
-        print(f"Loading model {config.model} for measurement...")
+        Output.info(f"Loading model {config.model} for measurement...")
         model = AutoModelForCausalLM.from_pretrained(
             config.model,
             torch_dtype="auto",
@@ -60,13 +60,14 @@ def main():
         # Save Measurements if requested
         if config.measurements.save_path:
             save_measurements(results, layer_scores, config.measurements.save_path)
+            Output.success(f"Measurements saved to {config.measurements.save_path}")
         
         # Unload Model
         del model
         del tokenizer
         gc.collect()
         torch.cuda.empty_cache()
-        print("Model unloaded. Memory cleared.")
+        Output.success("Model unloaded. Memory cleared.")
 
     # Apply Projection if requested (Method based)
     if config.ablation.method in ["biprojection", "full"]:
@@ -85,7 +86,7 @@ def main():
         # Calculate Global Refusal Direction (Top-K Average)
         sorted_layers = sorted(layer_scores.items(), key=lambda x: x[1], reverse=True)
         top_k_indices = [x[0] for x in sorted_layers[:config.ablation.top_k]]
-        print(f"Refusal Calculation: Selected Top-{config.ablation.top_k} layers: {top_k_indices}")
+        Output.info(f"Selected Top-{config.ablation.top_k} layers for refusal calculation: {top_k_indices}")
     
         # Gather refusal vectors from top-k layers
         selected_refusals = []
@@ -103,9 +104,12 @@ def main():
         global_refusal_dir = torch.stack(selected_refusals).mean(dim=0)
         global_refusal_dir = torch.nn.functional.normalize(global_refusal_dir, dim=0)
         
-        print("Global refusal direction computed.")
+        Output.success("Global refusal direction computed.")
 
         # 3. Sharded Ablation Phase
+        # Header is inside run_sharded_ablation now? No, wait. 
+        # I removed it from abliterate.py but added it to run_sharded_ablation.
+        
         run_sharded_ablation(
             config=config,
             global_refusal_dir=global_refusal_dir,
@@ -116,9 +120,9 @@ def main():
         output_config_path = f"{config.output_dir}/abliteration_config.yaml"
         shutil.copy(args.config, output_config_path)
         
-        print(f"Done! Abliterated model saved to {config.output_dir}")
+        Output.success(f"Job Complete! Abliterated model saved to {config.output_dir}")
     else:
-        print("Skipping model ablation as 'output_dir' is not specified.")
+        Output.warning("Skipping model ablation as 'output_dir' is not specified.")
 
 if __name__ == "__main__":
     main()
