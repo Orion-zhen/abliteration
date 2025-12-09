@@ -4,6 +4,11 @@ Make abliterated models using transformers, easy and fast.
 
 ## Introduction
 
+Update:
+
+- Supported toggle betwenn biprojection and norm-preserving abliteration.
+- Supported [Norm-Preserving Biprojected Abliteration](https://huggingface.co/blog/grimjim/norm-preserving-biprojected-abliteration).
+
 There exist some directions that make LLMs to refuse users' input. Abliteration is a technique that can calculate the most significant refusal directions with harmful and harmless prompts, and then remove them from the model. This is a crude, proof-of-concept implementation to remove refusals from an LLM model without using TransformerLens.
 
 The code has been tested on Llama-3.2, Qwen2.5-Coder, Ministral-8b.
@@ -13,168 +18,80 @@ VRAM/RAM requirements: This repository has been making efforts to reduce VRAM us
 > [!NOTE]
 > Abliteration is not uncensorment. Though abliterated, it doesn't necessarily mean the model is completely uncensored, it simply will not explicitly refuse you, theoretically.
 
-## Quick Start
+## Usage
 
-### Clone the repositoty
+### Prepare
+
+Clone the repository:
 
 ```shell
 git clone https://github.com/Orion-zhen/abliteration.git && cd abliteration
 ```
 
-### Install dependencies
+Then install dependencies:
 
 ```shell
-pip install -r requirements.txt
+pip install -r requirements.txt # or requirements.rocm.txt if you have AMD GPU
 ```
 
-### Make your abliterations
+### Configuration
+
+The `abliterate.py` script needs a configuration file to run. You can find an example in `config.example.yaml`.
+
+### Run
+
+Make abliteration:
 
 ```shell
-python abliterate.py -m <path_to_your_model> -o <output_dir>
+python abliterate.py config.yaml
 ```
 
-### Chat with your abliterated model
+Chat with new model:
 
 ```shell
-python chat.py -m <path_to_your_abliterated_model>
+python chat.py -m /path/to/model
 ```
 
-### Compare between models
+Compare between two models:
 
 ```shell
-python compare.py -a <model_a> -b <model_b>
+python compare.py -a /path/to/model/a -b /path/to/model/b
 ```
 
-### Examples
+## Methodology
 
-- Abliterate Llama-3.2:
+### Simple
 
-```shell
-python abliterate.py -m meta-llama/Llama-3.2-3B-Instruct -o llama3.2-3b-abliterated
-```
+The standard ablation method. It calculates the outer product of the refusal direction and subtracts it from the weight matrix. This removes the component of the weights that contributes to the refusal direction.
 
-- Load model in 4-bit precision using bitsandbytes:
+$$ W_{new} = W - \alpha \cdot (r \cdot r^T) W $$
 
-```shell
-python abliterate.py -m meta-llama/Llama-3.2-3B-Instruct -o llama3.2-3b-abliterated --load-in-4bit
-```
+Where $W$ is the weight matrix, $\alpha$ is the scaling factor, and $r$ is the refusal direction. This method does not preserve the norm of the weights.
 
-- Compare your abliterated model with the original model:
+### Biprojection
 
-```shell
-python compare.py -a meta-llama/Llama-3.2-3B-Instruct -b llama3.2-3b-abliterated
-```
+This method improves upon the simple approach by ensuring that the refusal direction is orthogonal to a "harmless" direction. It calculates a harmless mean vector from non-refusal data and removes any component of the refusal direction that overlaps with this harmless direction.
 
-- Compare in 4-bit precision using bitsandbytes:
+This prevents the ablation from damaging capabilities that are shared between harmful and harmless queries.
 
-```shell
-python compare.py -a meta-llama/Llama-3.2-3B-Instruct -b llama3.2-3b-abliterated --load-in-4bit
-```
+### Norm-Preserving
 
-> [!NOTE]
-> If you use `--load-in-4bit` or `--load-in-8bit`, then I will assume you are lack of VRAM, and the final appliance step will be performed with CPU and memory. Please make sure you have enough memory to load the **bf16** model.
+Instead of directly modifying the weights, it decomposes the weight matrix into magnitude and direction. The refusal direction is ablated only from the directional component, and the result is re-normalized to ensure the weights stay on the unit hypersphere before recombining with the original magnitudes.
 
-Now your model will be abliterated and saved to `<output_dir>`. Once it finishes, you can immediately chat with your abliterated model in the terminal. For Chinese models, you can use `--deccp` to abliterate it from certain topics.
+### Full
 
-## Advanced Usage
+Biprojection + Norm-Preserving.
 
-### Use config files
+## Limitations
 
-This repository now supports `.json` config file. This file should contain a `dict` of config key value pairs. For example:
-
-```json
-{
-    "model": "/absolute/path/to/your/model",
-    "output": "/output/dir",
-    "data-harmful": "/absolute/path/to/harmful-prompts.txt",
-    "scale-factor": 114,
-    "load-in-4bit": true
-}
-```
-
-```shell
-python abliterate.py -c config.json
-```
-
-Loading config file will **overwrite** command line arguments.
-
-### Use your own prompts
-
-You can use your own prompts to abliterate your model. Supported file formats are `.txt`, `.parquet` and `.json`. Detailed formats are listed below:
-
-- `.txt`: Each line of the file is a prompt
-- `.parquet`: A parquet file with column `text`
-- `.json`: A json file with list of strings
-
-Then load your own prompts using `--data-harmful` and `--data-harmless` arguments:
-
-```shell
-python abliterate.py -m <path_to_your_model> -o <output_dir> --data-harmful /path/to/my/harmful.txt --data-harmless /path/to/my/harmless.txt
-```
-
-### Scale factor
-
-You can use `--scale-factor` to control the abliteration strength. A scale factor larger then 1 will impose stronger removal of refusals, while a negative scale factor will encourage refusal. You can try to increase the scale factor to see if it helps.
-
-```shell
-python abliterate.py -m <path_to_your_model> -o <output_dir> --scale-factor 1.5
-```
-
-### Input/Output refusals
-
-You can output the refusals to a file using `--output-refusals` argument:
-
-```shell
-python abliterate.py -m <path_to_your_model> -o <output_dir> --output-refusals refusals.bin
-```
-
-And load the refusals back using `--load-refusals` argument:
-
-```shell
-python abliterate.py -m <path_to_your_model> --input-refusals refusals.bin -o <output_dir>
-```
-
-If `--input-refusal` is provided, the script will not compute refusal directions again.
-
-### Abliterate specific targets
-
-By default, abliteration will be applied to `o_proj` and `down_proj`. You can add more targets by modifying the code below, as long as it won't mess up the model:
-
-```python
-# utils/apply.py, apply_abliteration()
-lm_model.layers[layer_idx].self_attn.o_proj.weight = modify_tensor(
-  lm_model.layers[layer_idx].self_attn.o_proj.weight.data,
-  refusal_dir,
-  scale_factor,
-)
-lm_model.layers[layer_idx].mlp.down_proj.weight = modify_tensor(
-  lm_model.layers[layer_idx].mlp.down_proj.weight.data,
-  refusal_dir,
-  scale_factor,
-)
-```
-
-Available targets can be found in [transformers model architectures](https://github.com/huggingface/transformers/tree/main/src/transformers/models) and [mergekit model architectures](https://github.com/arcee-ai/mergekit/tree/main/mergekit/_data/architectures).
-
-### Best practices
-
-This repository provides a bunch of parameters to optimize. To get the best results, you can try the following steps:
-
-1. Carefully choose your prompts. Prompts in this repository is a general example, you can use your own prompts to get better results.
-2. Adjust parameters. The script provides various parameters to control the abliteration progress. You can try different values to see if it helps.
-3. Change the targets. You can modify the code to abliterate other targets, as long as it won't mess up the model.
-4. If you have limited VRAM, try `--load-in-4bit` or `--load-in-8bit` to load the model in 4-bit or 8-bit precision.
-
-### Full arguments
-
-Use `--help` to see all available arguments:
-
-```shell
-python abliterate.py --help
-```
+- The harmful/harmless prompt in this repository is not optimized. Result generated by them may not be optimal.
+- The code haven't been widely tested.
+- There will be occasions that modified model includes `NaN` or `Inf` values (e.g. gemma3-4b-it). This is a known issue and I don't know how to fix it.
 
 ## Credits
 
+- [Norm-Preserving Biprojected Abliteration](https://huggingface.co/blog/grimjim/norm-preserving-biprojected-abliteration)
+- [jim-plus/llm-abliteration](https://github.com/jim-plus/llm-abliteration)
 - [Sumandora/remove-refusals-with-transformers](https://github.com/Sumandora/remove-refusals-with-transformers)
 - [AUGMXNT/deccp](https://github.com/AUGMXNT/deccp)
 - [huihui-ai](https://huggingface.co/huihui-ai)
