@@ -31,7 +31,7 @@ class AblationConfig:
 @dataclass
 class ModelConfig:
     model: str
-    output_dir: str
+    output_dir: Optional[str]
     inference: InferenceConfig = field(default_factory=InferenceConfig)
     measurements: MeasurementsConfig = field(default_factory=MeasurementsConfig)
     ablation: AblationConfig = field(default_factory=AblationConfig)
@@ -47,8 +47,13 @@ def load_config(config_path: str) -> ModelConfig:
     # Basic Validation
     if "model" not in raw_config:
         raise ValueError("Config must contain 'model'")
-    if "output_dir" not in raw_config:
-        raise ValueError("Config must contain 'output_dir'")
+    
+    # Check for at least one output destination
+    output_dir = raw_config.get("output_dir")
+    measurements_save_path = raw_config.get("measurements", {}).get("save_path")
+    
+    if not output_dir and not measurements_save_path:
+        raise ValueError("Config must provide at least one of 'output_dir' or 'measurements.save_path'")
 
     # Parse Inference Section
     inf_raw = raw_config.get("inference", {})
@@ -87,7 +92,7 @@ def load_config(config_path: str) -> ModelConfig:
     # Main Config
     config = ModelConfig(
         model=raw_config["model"],
-        output_dir=raw_config["output_dir"],
+        output_dir=output_dir, # Can be None
         inference=inference_config,
         measurements=measurements_config,
         ablation=ablation_config

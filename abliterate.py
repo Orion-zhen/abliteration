@@ -2,6 +2,7 @@ import argparse
 import gc
 import torch
 import shutil
+import os
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from utils.config import load_config, print_config
@@ -53,7 +54,7 @@ def main():
             harmless_list=harmless_data,
             batch_size=config.inference.batch_size,
             # projected=False, -> Removed argument
-            output_dir=config.output_dir
+            output_dir=config.output_dir or "." # Handle None safely if used
         )
         
         # Save Measurements if requested
@@ -71,47 +72,53 @@ def main():
     if config.ablation.method in ["biprojection", "full"]:
         inlayer_results_projection(results)
     
+    # Determine directory for plots
+    plot_save_dir = config.output_dir
+    if not plot_save_dir and config.measurements.save_path:
+        plot_save_dir = os.path.dirname(config.measurements.save_path)
+
     # Analyze Refusal Directions
-    analyze_results(results, config.output_dir)
+    if plot_save_dir:
+        analyze_results(results, plot_save_dir)
     
-    # Calculate Global Refusal Direction (Top-K Average)
-    # Calculate Global Refusal Direction (Top-K Average)
-    sorted_layers = sorted(layer_scores.items(), key=lambda x: x[1], reverse=True)
-    top_k_indices = [x[0] for x in sorted_layers[:config.ablation.top_k]]
-    print(f"Refusal Calculation: Selected Top-{config.ablation.top_k} layers: {top_k_indices}")
+    if config.output_dir:
+        # Calculate Global Refusal Direction (Top-K Average)
+        sorted_layers = sorted(layer_scores.items(), key=lambda x: x[1], reverse=True)
+        top_k_indices = [x[0] for x in sorted_layers[:config.ablation.top_k]]
+        print(f"Refusal Calculation: Selected Top-{config.ablation.top_k} layers: {top_k_indices}")
+    
+        # Gather refusal vectors from top-k layers
+        selected_refusals = []
+        for idx in top_k_indices:
+            local_refusal_dir = results[f'refuse_{idx}']
+            # Use configured sparsify strategy
+            sparsed_local_refusal_dir = sparsify_tensor(
+                local_refusal_dir, 
+                method=config.ablation.sparsify_method,
+                threshold=config.ablation.magnitude_threshold if config.ablation.sparsify_method == "magnitude" else config.ablation.quantile,
+                k=config.ablation.top_k # Logic reuse top_k for topk method if used
+            )
+            selected_refusals.append(sparsed_local_refusal_dir)
+        
+        global_refusal_dir = torch.stack(selected_refusals).mean(dim=0)
+        global_refusal_dir = torch.nn.functional.normalize(global_refusal_dir, dim=0)
+        
+        print("Global refusal direction computed.")
 
-    # Gather refusal vectors from top-k layers
-    selected_refusals = []
-    for idx in top_k_indices:
-        local_refusal_dir = results[f'refuse_{idx}']
-        # Use configured sparsify strategy
-        sparsed_local_refusal_dir = sparsify_tensor(
-            local_refusal_dir, 
-            method=config.ablation.sparsify_method,
-            threshold=config.ablation.magnitude_threshold if config.ablation.sparsify_method == "magnitude" else config.ablation.quantile,
-            k=config.ablation.top_k # Logic reuse top_k for topk method if used, but user asked for mag/per
+        # 3. Sharded Ablation Phase
+        run_sharded_ablation(
+            config=config,
+            global_refusal_dir=global_refusal_dir,
+            measurement_results=results
         )
-        selected_refusals.append(sparsed_local_refusal_dir)
-    
-    global_refusal_dir = torch.stack(selected_refusals).mean(dim=0)
-    global_refusal_dir = torch.nn.functional.normalize(global_refusal_dir, dim=0)
-    
-    print("Global refusal direction computed.")
-
-
-
-    # 3. Sharded Ablation Phase
-    run_sharded_ablation(
-        config=config,
-        global_refusal_dir=global_refusal_dir,
-        measurement_results=results
-    )
-    
-    # Save config details
-    output_config_path = f"{config.output_dir}/abliteration_config.yaml"
-    shutil.copy(args.config, output_config_path)
-    
-    print(f"Done! Abliterated model saved to {config.output_dir}")
+        
+        # Save config details
+        output_config_path = f"{config.output_dir}/abliteration_config.yaml"
+        shutil.copy(args.config, output_config_path)
+        
+        print(f"Done! Abliterated model saved to {config.output_dir}")
+    else:
+        print("Skipping model ablation as 'output_dir' is not specified.")
 
 if __name__ == "__main__":
     main()

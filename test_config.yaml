@@ -8,8 +8,8 @@ inference:
   flash_attn: false
 
 measurements:
-  # load_path: "/path/to/measurements.pt" # Optional
-  # save_path: "/path/to/save.pt" # Optional
+  load_path: "./measurements.pt" # Optional
+  # save_path: "./measurements.pt" # Optional
   harmful_prompts: "./data/harmful.parquet"
   harmless_prompts: "./data/harmless.parquet"
   clip: 1.0
