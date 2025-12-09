@@ -7,8 +7,9 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from utils.config import load_config, print_config
 from utils.measure import compute_refusals, save_measurements, load_measurements, inlayer_results_projection
 from utils.data import load_data
-from utils.sparsify import percentile_sparsify, sparsify_vector
+from utils.sparsify import percentile_sparsify, sparsify_tensor
 from utils.ablate import run_sharded_ablation
+from utils.analyze import analyze_results
 
 def main():
     parser = argparse.ArgumentParser(description="End-to-End Sharded Abliteration")
@@ -70,6 +71,9 @@ def main():
     if config.ablation.method in ["biprojection", "full"]:
         inlayer_results_projection(results)
     
+    # Analyze Refusal Directions
+    analyze_results(results, config.output_dir)
+    
     # Calculate Global Refusal Direction (Top-K Average)
     sorted_layers = sorted(layer_scores.items(), key=lambda x: x[1], reverse=True)
     top_k_indices = [x[0] for x in sorted_layers[:config.refusal.top_k]]
@@ -78,15 +82,15 @@ def main():
     # Gather refusal vectors from top-k layers
     selected_refusals = []
     for idx in top_k_indices:
-        vec = results[f'refuse_{idx}']
+        local_refusal_dir = results[f'refuse_{idx}']
         # Use configured sparsify strategy
-        sparse_vec = sparsify_vector(
-            vec, 
+        sparsed_local_refusal_dir = sparsify_tensor(
+            local_refusal_dir, 
             method=config.refusal.sparsify_method,
             threshold=config.refusal.magnitude_threshold if config.refusal.sparsify_method == "magnitude" else config.refusal.quantile,
             k=config.refusal.top_k # Logic reuse top_k for topk method if used, but user asked for mag/per
         )
-        selected_refusals.append(sparse_vec)
+        selected_refusals.append(sparsed_local_refusal_dir)
     
     global_refusal_dir = torch.stack(selected_refusals).mean(dim=0)
     global_refusal_dir = torch.nn.functional.normalize(global_refusal_dir, dim=0)

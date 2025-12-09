@@ -1,5 +1,5 @@
-model_id: "/home/orion/Models/gemma3-4b-bf16"
-output_dir: "/home/orion/Models/gemma3-4b-abli"
+model_id: "/home/orion/Models/qwen3-4b-bf16"
+output_dir: "/home/orion/Models/qwen3-4b-abli"
 device: "cuda"
 dtype: "bfloat16"
 flash_attn: false
@@ -7,7 +7,7 @@ flash_attn: false
 data:
   harmful_path: "./data/harmful.parquet"
   harmless_path: "./data/harmless.parquet"
-  batch_size: 1 # Low batch size for test
+  batch_size: 8 # Low batch size for test
   
 refusal_calculation:
   quantile: 0.995
