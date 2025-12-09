@@ -35,7 +35,7 @@ def main():
         Output.info(f"Loading model {config.model} for measurement...")
         model = AutoModelForCausalLM.from_pretrained(
             config.model,
-            torch_dtype="auto",
+            dtype="auto",
             trust_remote_code=True,
             device_map="auto",
             attn_implementation="flash_attention_2" if config.inference.flash_attn else None,
