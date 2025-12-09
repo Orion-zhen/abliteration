@@ -1,0 +1,23 @@
+model_id: "/home/orion/Models/gemma3-4b-bf16"
+output_dir: "/home/orion/Models/gemma3-4b-abli"
+device: "cuda"
+dtype: "bfloat16"
+flash_attn: false
+
+data:
+  harmful_path: "./data/harmful.parquet"
+  harmless_path: "./data/harmless.parquet"
+  batch_size: 1 # Low batch size for test
+  
+refusal_calculation:
+  quantile: 0.995
+  top_k: 2
+  projected: true
+
+ablation:
+  method: "biprojected"
+  global_scale: 1.0
+  layer_overrides:
+    # Test override logic
+    24:
+      scale: 0.5
