@@ -1,23 +1,26 @@
-model_id: "/home/orion/Models/qwen3-4b-bf16"
+model: "/home/orion/Models/qwen3-4b-bf16"
 output_dir: "/home/orion/Models/qwen3-4b-abli"
-device: "cuda"
-dtype: "bfloat16"
-flash_attn: false
 
-data:
-  harmful_path: "./data/harmful.parquet"
-  harmless_path: "./data/harmless.parquet"
-  batch_size: 8 # Low batch size for test
-  
-refusal_calculation:
-  quantile: 0.995
-  top_k: 2
-  projected: true
+inference:
+  device: "cuda"
+  batch_size: 8
+  max_lengh: 512
+  flash_attn: false
+
+measurements:
+  # load_path: "/path/to/measurements.pt" # Optional
+  # save_path: "/path/to/save.pt" # Optional
+  harmful_prompts: "./data/harmful.parquet"
+  harmless_prompts: "./data/harmless.parquet"
+  clip: 1.0
 
 ablation:
-  method: "full" # Options: simple, biprojection, norm-preserving, full
+  method: "full"
+  sparsify_method: "percentile"
+  quantile: 0.995
+  magnitude_threshold: 0.05
+  top_k: 2
   global_scale: 1.0
-  layer_overrides: {}
-    # Test override logic
-    # 24:
-    #   scale: 0.5
+  layer_overrides:
+    24:
+      scale: 0.5

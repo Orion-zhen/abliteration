@@ -14,13 +14,15 @@ from utils.model import welford_gpu_batched_multilayer_float32
 class TestAbliterationConfig(unittest.TestCase):
     def setUp(self):
         self.yaml_content = """
-        model_id: "test/model"
+        model: "test/model"
         output_dir: "./output/test"
-        device: "cpu"
-        refusal_calculation:
-          quantile: 0.95
-          top_k: 5
+        inference:
+          device: "cpu"
+        measurements:
+            harmful_prompts: "data/harmful.parquet"
         ablation:
+            quantile: 0.95
+            top_k: 5
             layer_overrides:
                 10:
                     scale: 2.0
@@ -30,8 +32,8 @@ class TestAbliterationConfig(unittest.TestCase):
         with patch("builtins.open", mock_open(read_data=self.yaml_content)):
             with patch("os.path.exists", return_value=True):
                 config = load_config("fake_config.yaml")
-                self.assertEqual(config.model_id, "test/model")
-                self.assertEqual(config.refusal.quantile, 0.95)
+                self.assertEqual(config.model, "test/model")
+                self.assertEqual(config.ablation.quantile, 0.95)
                 self.assertEqual(config.ablation.layer_overrides[10]["scale"], 2.0)
 
 class TestModifier(unittest.TestCase):

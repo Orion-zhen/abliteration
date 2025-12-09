@@ -44,8 +44,8 @@ def get_layer_ablation_config(
              raw_refusal_dir = measurement_results[f'refuse_{source_idx}']
              refusal_dir = sparsify_tensor(
                 tensor=raw_refusal_dir,
-                method=config.refusal.sparsify_method,
-                threshold=config.refusal.magnitude_threshold if config.refusal.sparsify_method == "magnitude" else config.refusal.quantile
+                method=config.ablation.sparsify_method,
+                threshold=config.ablation.magnitude_threshold if config.ablation.sparsify_method == "magnitude" else config.ablation.quantile
              ) 
              refusal_dir = torch.nn.functional.normalize(refusal_dir, dim=0)
 
