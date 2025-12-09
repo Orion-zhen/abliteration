@@ -1,0 +1,30 @@
+model: "Qwen/Qwen3-0.6B"
+output_dir: "/path/to/my/model"
+
+inference:
+  device: "cuda"
+  batch_size: 8
+  max_lengh: 512
+  flash_attn: false
+
+measurements:
+  # load_path: "./measurements.pt" # Optional, load measurements from a file, will skip refusal direction computing.
+  # save_path: "./measurements.pt" # Optional, save measurements to a file for later use.
+  harmful_prompts: "./data/harmful.parquet"
+  harmless_prompts: "./data/harmless.parquet"
+  clip: 1.0
+
+ablation:
+  method: "full" # Choices: "simple", "biprojection", "norm-preserving", "full". See README.md for details.
+  sparsify_method: "percentile" # Choices: "percentile", "magnitude".
+  quantile: 0.995 # Only used when sparsify_method is "percentile".
+  magnitude_threshold: 0.05 # Only used when sparsify_method is "magnitude".
+  top_k: 3 # Top K refusal directions to use.
+  global_scale: 1.0 # Global scale factor for the ablation.
+  layer_overrides:
+    24: # Layer index
+      scale: 0.5 # Overrides global_scale.
+      source_layer: 23 # Use refusal direction calculated from this layer instead of global direction.
+    114:
+      scale: 191
+      source_layer: 514
