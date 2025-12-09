@@ -127,7 +127,7 @@ def analyze_results(results: dict, output_dir: str = ".", output_plot_name: str 
     ax3.set_ylabel('Ratio', fontsize=11)
     ax3.set_title('Signal-to-Noise and Refusal Purity Ratios vs Layer', fontsize=12, fontweight='bold')
     ax3.grid(True, alpha=0.3)
-    ax3.legend() # Added legend to match analyze.py implicitness if any, but explicit is better
+    ax3.legend()
 
     # Plot 4: Est. Signal Quality
     ax4 = axes[1, 1]
@@ -138,6 +138,7 @@ def analyze_results(results: dict, output_dir: str = ".", output_plot_name: str 
     ax4.grid(True, alpha=0.3)
 
     plt.tight_layout()
+    os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, output_plot_name)
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close()

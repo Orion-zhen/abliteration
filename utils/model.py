@@ -1,15 +1,9 @@
-import gc
-import os
 import torch
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizer, PreTrainedTokenizerFast
 from typing import List, Dict, Union
-from utils.vector_utils import remove_orthogonal_projection
 
-def magnitude_clip(tensor: torch.Tensor, max_val: float) -> torch.Tensor:
-    """Clips tensor values to [-max_val, max_val] by magnitude preserving sign."""
-    return torch.clamp(tensor, -max_val, max_val)
+from utils.math_utils import remove_orthogonal_projection, magnitude_clip
 
 def welford_gpu_batched_multilayer_float32(
     formatted_prompts: list[str],
@@ -178,30 +172,6 @@ def compute_refusals(
         score = snr * dissimilarity
         layer_scores[layer] = score
 
-    return results, layer_scores
-
-def save_measurements(results: dict, layer_scores: dict, path: str):
-    """Saves raw measurements and scores to a file."""
-    print(f"Saving measurements to {path}...")
-    # Using torch.save for simplicity as it handles dictionary of tensors well
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    data = {"results": results, "layer_scores": layer_scores}
-    torch.save(data, path)
-    print("Measurements saved.")
-
-def load_measurements(path: str) -> tuple[dict, dict]:
-    """Loads measurements from a file."""
-    print(f"Loading measurements from {path}...")
-    if not os.path.exists(path):
-         raise FileNotFoundError(f"Measurements file not found: {path}")
-    
-    data = torch.load(path, weights_only=False) # weights_only=False primarily for dict structure support, trusted source assumption
-    # In newer torch, weights_only=True is default. If it's just tensors in dict, it might work, but safer to warn/handle.
-    # Given we are saving a dict of tensors and a dict of floats, standard torch.save/load is fine.
-    
-    results = data["results"]
-    layer_scores = data["layer_scores"]
-    print("Measurements loaded.")
     return results, layer_scores
 
 def inlayer_results_projection(results: dict[str, torch.Tensor]):

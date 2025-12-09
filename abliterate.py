@@ -5,11 +5,11 @@ import shutil
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from utils.config import load_config, print_config
-from utils.measure import compute_refusals, save_measurements, load_measurements, inlayer_results_projection
-from utils.data import load_data
-from utils.sparsify import percentile_sparsify, sparsify_tensor
-from utils.ablate import run_sharded_ablation
-from utils.analyze import analyze_results
+from utils.model import compute_refusals, inlayer_results_projection
+from utils.io import load_data, save_measurements, load_measurements
+from utils.math_utils import sparsify_tensor
+from utils.ablation import run_sharded_ablation
+from utils.plot import analyze_results
 
 def main():
     parser = argparse.ArgumentParser(description="End-to-End Sharded Abliteration")

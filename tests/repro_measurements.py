@@ -9,8 +9,9 @@ from dataclasses import dataclass
 import sys
 sys.path.append(".")
 from utils.config import ModelConfig, DataConfig, RefusalConfig, AblationConfig
-from utils.measure import save_measurements, load_measurements, project_refusal_directions
-from utils.sparsify import sparsify_vector
+from utils.io import save_measurements, load_measurements
+from utils.model import inlayer_results_projection
+from utils.math_utils import sparsify_tensor
 
 class TestMeasurements(unittest.TestCase):
     def setUp(self):
@@ -41,7 +42,7 @@ class TestMeasurements(unittest.TestCase):
         self.assertTrue(torch.allclose(results["refuse_0"], loaded_results["refuse_0"]))
         self.assertEqual(layer_scores[0], loaded_scores[0])
 
-    def test_project_refusal_directions(self):
+    def test_inlayer_results_projection(self):
         # Setup: Refusal parallel to harmless
         harmless = torch.tensor([1.0, 0.0])
         refusal = torch.tensor([2.0, 0.0]) # Parallel, projection should make it 0
@@ -51,7 +52,7 @@ class TestMeasurements(unittest.TestCase):
             "harmless_0": harmless.clone()
         }
         
-        project_refusal_directions(results)
+        inlayer_results_projection(results)
         
         # Expect refusal to be 0 (orthogonalized)
         # Proj = (ref . harmless_norm) * harmless_norm = (2 * 1) * [1,0] = [2,0]
@@ -63,13 +64,13 @@ class TestMeasurements(unittest.TestCase):
         
         # Magnitude (thresh 0.3) -> Keep 0.5, 0.9
         # max is 0.9. fraction 0.3 * 0.9 = 0.27. Keep > 0.27
-        res_mag = sparsify_vector(vec, method="magnitude", threshold=0.3) 
+        res_mag = sparsify_tensor(vec, method="magnitude", threshold=0.3) 
         # 0.1 < 0.27 (0), 0.5 > 0.27 (0.5), 0.2 < 0.27 (0), 0.9 > 0.27 (0.9)
         expected_mag = torch.tensor([0.0, 0.5, 0.0, 0.9])
         self.assertTrue(torch.allclose(res_mag, expected_mag))
 
         # Percentile (0.5 aka 50%) -> Keep top 50% = 0.5, 0.9
-        res_perc = sparsify_vector(vec, method="percentile", threshold=0.5)
+        res_perc = sparsify_tensor(vec, method="percentile", threshold=0.5)
         self.assertTrue(torch.allclose(res_perc, expected_mag))
 
 if __name__ == "__main__":

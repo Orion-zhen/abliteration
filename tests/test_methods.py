@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 import numpy as np
 from unittest.mock import patch
-from utils.modifier import modify_tensor_simple, modify_tensor_norm_preserved
+from utils.math_utils import modify_tensor_simple, modify_tensor_norm_preserved
 
 class TestAbliterationMethods(unittest.TestCase):
     def setUp(self):
