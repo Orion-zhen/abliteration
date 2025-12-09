@@ -5,9 +5,9 @@ import shutil
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from utils.config import load_config, print_config
-from utils.measure import compute_refusals
+from utils.measure import compute_refusals, save_measurements, load_measurements, project_refusal_directions
 from utils.data import load_data
-from utils.sparsify import percentile_sparsify
+from utils.sparsify import percentile_sparsify, sparsify_vector
 from utils.ablate import run_sharded_ablation
 
 def main():
@@ -25,31 +25,50 @@ def main():
     print("PHASE 1: Measurement & Refusal Calculation")
     print("="*60)
 
-    # Load Model for Inference
-    print(f"Loading model {config.model_id} for measurement...")
-    model = AutoModelForCausalLM.from_pretrained(
-        config.model_id,
-        torch_dtype=getattr(torch, config.dtype),
-        trust_remote_code=True,
-        device_map="auto",
-        attn_implementation="flash_attention_2" if config.flash_attn else None,
-    )
-    tokenizer = AutoTokenizer.from_pretrained(config.model_id, trust_remote_code=True)
-    
-    # Load Data
-    harmful_data = load_data(config.data.harmful_path)
-    harmless_data = load_data(config.data.harmless_path)
-    
-    # Compute Refusals
-    results, layer_scores = compute_refusals(
-        model=model,
-        tokenizer=tokenizer,
-        harmful_list=harmful_data,
-        harmless_list=harmless_data,
-        batch_size=config.data.batch_size,
-        projected=config.refusal.projected,
-        output_dir=config.output_dir
-    )
+    # Check if we should load measurements
+    if config.refusal.measurements_load_path:
+        results, layer_scores = load_measurements(config.refusal.measurements_load_path)
+    else:
+        # Load Model for Inference
+        print(f"Loading model {config.model_id} for measurement...")
+        model = AutoModelForCausalLM.from_pretrained(
+            config.model_id,
+            dtype=getattr(torch, config.dtype),
+            trust_remote_code=True,
+            device_map="auto",
+            attn_implementation="flash_attention_2" if config.flash_attn else None,
+        )
+        tokenizer = AutoTokenizer.from_pretrained(config.model_id, trust_remote_code=True)
+        
+        # Load Data
+        harmful_data = load_data(config.data.harmful_path)
+        harmless_data = load_data(config.data.harmless_path)
+        
+        # Compute Refusals (Raw)
+        results, layer_scores = compute_refusals(
+            model=model,
+            tokenizer=tokenizer,
+            harmful_list=harmful_data,
+            harmless_list=harmless_data,
+            batch_size=config.data.batch_size,
+            projected=False, # Always compute unprojected first
+            output_dir=config.output_dir
+        )
+        
+        # Save Measurements if requested
+        if config.refusal.measurements_save_path:
+            save_measurements(results, layer_scores, config.refusal.measurements_save_path)
+        
+        # Unload Model
+        del model
+        del tokenizer
+        gc.collect()
+        torch.cuda.empty_cache()
+        print("Model unloaded. Memory cleared.")
+
+    # Apply Projection if requested
+    if config.refusal.projected:
+        project_refusal_directions(results)
     
     # Calculate Global Refusal Direction (Top-K Average)
     sorted_layers = sorted(layer_scores.items(), key=lambda x: x[1], reverse=True)
@@ -60,7 +79,13 @@ def main():
     selected_refusals = []
     for idx in top_k_indices:
         vec = results[f'refuse_{idx}']
-        sparse_vec = percentile_sparsify(vec, percentile=config.refusal.quantile)
+        # Use configured sparsify strategy
+        sparse_vec = sparsify_vector(
+            vec, 
+            method=config.refusal.sparsify_method,
+            threshold=config.refusal.magnitude_threshold if config.refusal.sparsify_method == "magnitude" else config.refusal.quantile,
+            k=config.refusal.top_k # Logic reuse top_k for topk method if used, but user asked for mag/per
+        )
         selected_refusals.append(sparse_vec)
     
     global_refusal_dir = torch.stack(selected_refusals).mean(dim=0)
@@ -68,12 +93,7 @@ def main():
     
     print("Global refusal direction computed.")
 
-    # Unload Model
-    del model
-    del tokenizer
-    gc.collect()
-    torch.cuda.empty_cache()
-    print("Model unloaded. Memory cleared.")
+
 
     # 3. Sharded Ablation Phase
     run_sharded_ablation(

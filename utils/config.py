@@ -17,11 +17,19 @@ class RefusalConfig:
     quantile: float = 0.995
     top_k: int = 10
     projected: bool = True  # Default to True for safety (orthogonality)
+    # Measurements I/O
+    measurements_save_path: Optional[str] = None
+    measurements_load_path: Optional[str] = None
+    # Sparsification Strategy
+    sparsify_method: str = "percentile"  # "percentile", "magnitude"
+    magnitude_threshold: float = 0.05
+    # Percentile strategy uses 'quantile' field above
 
 @dataclass
 class AblationConfig:
     method: str = "biprojected"
     global_scale: float = 1.0
+    # Overrides: layer_idx -> {source_layer: int, scale: float}
     layer_overrides: Dict[Union[int, str], Dict[str, Any]] = field(default_factory=dict)
 
 @dataclass
@@ -64,7 +72,11 @@ def load_config(config_path: str) -> ModelConfig:
     refusal_config = RefusalConfig(
         quantile=ref_raw.get("quantile", 0.995),
         top_k=ref_raw.get("top_k", 10),
-        projected=ref_raw.get("projected", True)
+        projected=ref_raw.get("projected", True),
+        measurements_save_path=ref_raw.get("measurements_save_path"),
+        measurements_load_path=ref_raw.get("measurements_load_path"),
+        sparsify_method=ref_raw.get("sparsify_method", "percentile"),
+        magnitude_threshold=ref_raw.get("magnitude_threshold", 0.05)
     )
 
     # Parse Ablation Section
@@ -105,6 +117,8 @@ def print_config(config: ModelConfig):
     print(f"  Quantile: {config.refusal.quantile}")
     print(f"  Top K Layers: {config.refusal.top_k}")
     print(f"  Projected (Measurement): {config.refusal.projected}")
+    print(f"  Measurements Load Path: {config.refusal.measurements_load_path}")
+    print(f"  Measurements Save Path: {config.refusal.measurements_save_path}")
     print("-" * 60)
     print("Ablation:")
     print(f"  Global Scale: {config.ablation.global_scale}")

@@ -203,3 +203,49 @@ def compute_refusals(
     plot_scores(layer_scores, os.path.join(output_dir, "refusal_scores.png"))
 
     return results, layer_scores
+
+def save_measurements(results: dict, layer_scores: dict, path: str):
+    """Saves raw measurements and scores to a file."""
+    print(f"Saving measurements to {path}...")
+    # Using torch.save for simplicity as it handles dictionary of tensors well
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    data = {"results": results, "layer_scores": layer_scores}
+    torch.save(data, path)
+    print("Measurements saved.")
+
+def load_measurements(path: str) -> tuple[dict, dict]:
+    """Loads measurements from a file."""
+    print(f"Loading measurements from {path}...")
+    if not os.path.exists(path):
+         raise FileNotFoundError(f"Measurements file not found: {path}")
+    
+    data = torch.load(path, weights_only=False) # weights_only=False primarily for dict structure support, trusted source assumption
+    # In newer torch, weights_only=True is default. If it's just tensors in dict, it might work, but safer to warn/handle.
+    # Given we are saving a dict of tensors and a dict of floats, standard torch.save/load is fine.
+    
+    results = data["results"]
+    layer_scores = data["layer_scores"]
+    print("Measurements loaded.")
+    return results, layer_scores
+
+def project_refusal_directions(results: dict):
+    """
+    Applies orthogonal projection to refusal directions in results.
+    Refusal = Refusal - proj(Refusal, Harmless)
+    """
+    print("Applying orthogonal projection to refusal directions...")
+    keys = list(results.keys())
+    for key in keys:
+        if key.startswith("refuse_"):
+            layer_idx = key.split("_")[1] # refuse_0 -> 0
+            
+            refusal_vec = results[key].float()
+            harmless_vec = results.get(f'harmless_{layer_idx}')
+            
+            if harmless_vec is not None:
+                harmless_vec = harmless_vec.float()
+                harmless_normed = torch.nn.functional.normalize(harmless_vec, dim=0)
+                projection = torch.dot(refusal_vec, harmless_normed)
+                refusal_vec = refusal_vec - projection * harmless_normed
+                results[key] = refusal_vec # Update in place
+    print("Projection applied.")

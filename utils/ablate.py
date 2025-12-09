@@ -9,7 +9,7 @@ from transformers.utils import cached_file
 
 from utils.config import ModelConfig
 from utils.modifier import modify_tensor_norm_preserved
-from utils.sparsify import percentile_sparsify
+from utils.sparsify import percentile_sparsify, sparsify_vector
 
 def run_sharded_ablation(
     config: ModelConfig,
@@ -120,16 +120,20 @@ def run_sharded_ablation(
                 # Check Overrides
                 override = config.ablation.layer_overrides.get(layer_idx)
                 if override is None:
-                     override = config.ablation.layer_overrides.get(str(layer_idx))
+                     override = config.ablation.layer_overrides.get(str(layer_idx)) # Retry if the key is string
 
                 if override:
                     scale = override.get("scale", scale)
                     source_idx = override.get("source_layer")
                     if source_idx is not None:
                          # Use specific layer's refusal direction
-                         # Sparsify it to be consistent
+                         # Sparsify it to be consistent with config
                          raw_vec = measurement_results[f'refuse_{source_idx}']
-                         refusal_vec = percentile_sparsify(raw_vec, percentile=config.refusal.quantile)
+                         refusal_vec = sparsify_vector(
+                            raw_vec,
+                            method=config.refusal.sparsify_method,
+                            threshold=config.refusal.magnitude_threshold if config.refusal.sparsify_method == "magnitude" else config.refusal.quantile
+                         ) 
                          refusal_vec = torch.nn.functional.normalize(refusal_vec, dim=0)
 
                 # Get Harmless Mean for Orthogonalization (Biprojection)
