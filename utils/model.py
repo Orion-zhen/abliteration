@@ -91,6 +91,8 @@ def welford_gpu_batched_multilayer_float32(
     }
     return return_dict
 
+from utils.output import Output
+
 def compute_refusals(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
@@ -130,16 +132,16 @@ def compute_refusals(
             ) for p in prompts
         ]
 
-    print("Formatting prompts...")
+    Output.info("Formatting prompts...")
     harmful_formatted = format_chats(harmful_list)
     harmless_formatted = format_chats(harmless_list)
 
-    print("Computing Harmful Means...")
+    Output.info("Computing Harmful Means...")
     harmful_means = welford_gpu_batched_multilayer_float32(
         harmful_formatted, "Harmful Batches", model, tokenizer, focus_layers, batch_size=batch_size
     )
 
-    print("Computing Harmless Means...")
+    Output.info("Computing Harmless Means...")
     harmless_means = welford_gpu_batched_multilayer_float32(
         harmless_formatted, "Harmless Batches", model, tokenizer, focus_layers, batch_size=batch_size
     )
@@ -147,7 +149,7 @@ def compute_refusals(
     results = {}
     layer_scores = {}
 
-    print("Calculating Refusal Vectors...")
+    Output.info("Calculating Refusal Vectors...")
     for layer in tqdm(focus_layers, desc="Processing Layers"):
         target_harmful = harmful_means[layer]
         target_harmless = harmless_means[layer]
@@ -179,7 +181,7 @@ def inlayer_results_projection(results: dict[str, torch.Tensor]):
     Applies orthogonal projection to refusal directions in results.
     Refusal = Refusal - proj(Refusal, Harmless)
     """
-    print("Applying orthogonal projection to refusal directions...")
+    Output.info("Applying orthogonal projection to refusal directions...")
     keys = list(results.keys())
     for key in keys:
         if key.startswith("refuse_"):
@@ -192,4 +194,4 @@ def inlayer_results_projection(results: dict[str, torch.Tensor]):
                 harmless_vec = harmless_vec.float()
                 refusal_vec = remove_orthogonal_projection(refusal_vec, harmless_vec)
                 results[key] = refusal_vec # Update in place
-    print("Projection applied.")
+    Output.success("Projection applied.")

@@ -17,6 +17,8 @@ from utils.math_utils import (
     remove_orthogonal_projection
 )
 
+from utils.output import Output
+
 def get_layer_ablation_config(
     config: ModelConfig,
     layer_idx: int,
@@ -74,12 +76,12 @@ def modify_shard_weights(
     config: ModelConfig,
     global_refusal_dir: torch.Tensor,
     measurement_results: Dict[str, torch.Tensor]
-) -> bool:
+) -> int:
     """
     Modifies weights in the provided state_dict in-place.
-    Returns True if any modification happened.
+    Returns the number of modified weights.
     """
-    modified = False
+    mod_count = 0
     keys = list(state_dict.keys())
     
     for key in keys:
@@ -104,18 +106,15 @@ def modify_shard_weights(
             )
 
             # Apply Modification
-            method_name = "norm_preserving" if use_norm_preserving else "simple"
-            print(f"  Modifying {key} (Layer {layer_idx}) Scale={scale} Method={method_name}")
-            
             W = state_dict[key]
             if use_norm_preserving:
                 new_W = modify_tensor_norm_preserved(W, refusal_dir, scale_factor=scale)
             else:
                  new_W = modify_tensor_simple(W, refusal_dir, scale_factor=scale)
             state_dict[key] = new_W
-            modified = True
+            mod_count += 1
             
-    return modified
+    return mod_count
 
 def run_sharded_ablation(
     config: ModelConfig,
@@ -126,9 +125,7 @@ def run_sharded_ablation(
     Executes the sharded ablation process.
     Iterates through model shards, applies ablation to target layers, and saves modified shards.
     """
-    print("\n" + "="*60)
-    print("PHASE 2: Sharded Ablation & Weight Modification")
-    print("="*60)
+    Output.header("Phase 2: Sharded Ablation & Weight Modification")
     
     # Prepare Output
     output_path = Path(config.output_dir)
@@ -138,31 +135,38 @@ def run_sharded_ablation(
     index_path, model_dir, weight_map, shards = resolve_model_paths(config.model)
     
     # Process Shards
-    for shard_file in tqdm(shards, desc="Processing Shards"):
+    total_modified_weights = 0
+    
+    pbar = tqdm(shards, desc="Processing Shards", unit="shard")
+    for shard_file in pbar:
         # Handle local vs cache paths
         if isinstance(model_dir, Path):
             shard_path = model_dir / shard_file
         else:
              shard_path = Path(model_dir) / shard_file
              
-        print(f"Loading shard {shard_file}...")
-        
         # Load Shard
         state_dict = load_file(str(shard_path))
         
         # Modify Shard
-        is_modified = modify_shard_weights(state_dict, config, global_refusal_dir, measurement_results)
+        mods = modify_shard_weights(state_dict, config, global_refusal_dir, measurement_results)
+        total_modified_weights += mods
 
-        if is_modified:
-            print(f"  Saving modified shard {shard_file}...")
+        if mods > 0:
+            # Output.info(f"Saving modified shard {shard_file} ({mods} changes)")
             save_file(state_dict, output_path / shard_file)
         else:
-            print(f"  Copying unmodified shard {shard_file}...")
+            # Output.info(f"Copying unmodified shard {shard_file}")
             # Use shutil copy for speed on unmodified shards
             shutil.copy(shard_path, output_path / shard_file)
             
         del state_dict
         gc.collect()
+        
+        # Update progress bar description with latest status
+        pbar.set_postfix({"Mods": total_modified_weights})
+
+    Output.success(f"Ablation complete. Modified {total_modified_weights} weight matrices across {len(shards)} shards.")
 
     # Finalize
     copy_model_artifacts(config, output_path, index_path)

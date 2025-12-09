@@ -1,8 +1,8 @@
-
 import os
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
+from utils.output import Output
 
 def analyze_results(results: dict, output_dir: str = ".", output_plot_name: str = "refusal_analysis.png"):
     """
@@ -17,7 +17,7 @@ def analyze_results(results: dict, output_dir: str = ".", output_plot_name: str 
     if layers == 0 and "layers" in results:
         layers = results["layers"]
 
-    print(f"Analyzing {layers} layers...")
+    Output.subheader(f"Analyzing {layers} Layers")
 
     cosine_similarities = []
     cosine_similarities_harmful = []
@@ -28,6 +28,8 @@ def analyze_results(results: dict, output_dir: str = ".", output_plot_name: str 
     snratios = []
     signal_quality_estimates = []
     purity_ratios = []
+    
+    layer_data = []
 
     for layer in range(layers):
         harmful_mean = results[f'harmful_{layer}'].float()
@@ -75,24 +77,30 @@ def analyze_results(results: dict, output_dir: str = ".", output_plot_name: str 
         refusal_orth = refusal_dir - projection
 
         # Compute purity ratio
-        purity_ratio = refusal_orth.norm() / refusal_dir.norm()
+        purity_ratio = (refusal_orth.norm() / refusal_dir.norm()).item()
         purity_ratios.append(purity_ratio)
 
         # 6. Signal quality
         quality = snr * (1 - cos_sim) * purity_ratio
         signal_quality_estimates.append(quality)
+        
+        # Collect data for table
+        layer_data.append({
+            "Layer": layer,
+            "Quality": round(quality, 4),
+            "SNR": round(snr, 4),
+            "Purity": round(purity_ratio, 4),
+            "CosSim": round(cos_sim, 4),
+            "RefuseNorm": round(refusal_norm, 4)
+        })
 
-        print(f"=== Refusal Direction Analysis (Layer {layer}) ===")
-        print(f"Cosine similarity:       {cos_sim:.4f}")
-        print(f"Harmful mean norm:       {harmful_norm:.4f}")
-        print(f"Harmless mean norm:      {harmless_norm:.4f}")
-        print(f"Refusal direction norm:  {refusal_norm:.4f}")
-        print(f"Signal-to-noise ratio:   {snr:.4f}")
-        print(f"Refusal purity ratio:    {purity_ratio:.4f}")
-        print(f"Est. Signal quality:     {quality:.4f}")
+    # Print Summary Table (Top 10 by Quality)
+    Output.info("Top Layers by Estimated Signal Quality:")
+    top_layers = sorted(layer_data, key=lambda x: x["Quality"], reverse=True)[:10]
+    Output.table(top_layers, headers=["Layer", "Quality", "SNR", "Purity", "CosSim", "RefuseNorm"])
 
     # Charting
-    print("Generating analysis charts...")
+    Output.info("Generating analysis charts...")
     layer_indices = range(layers)
     fig, axes = plt.subplots(2, 2, figsize=(20, 15))
     fig.suptitle('Refusal Direction Analysis Across Layers', fontsize=16, fontweight='bold')
@@ -142,4 +150,4 @@ def analyze_results(results: dict, output_dir: str = ".", output_plot_name: str 
     output_path = os.path.join(output_dir, output_plot_name)
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close()
-    print(f"Analysis chart saved to {output_path}")
+    Output.success(f"Analysis chart saved to {output_path}")

@@ -100,28 +100,32 @@ def load_config(config_path: str) -> ModelConfig:
 
     return config
 
+from utils.output import Output
+
 def print_config(config: ModelConfig):
     """Prints the configuration in a readable format."""
-    print("=" * 60)
-    print(f"Model: {config.model}")
-    print(f"Output Dir: {config.output_dir}")
-    print("-" * 60)
-    print("Inference:")
-    print(f"  Device: {config.inference.device}")
-    print(f"  Batch Size: {config.inference.batch_size}")
-    print(f"  Max Length: {config.inference.max_length}")
-    print(f"  Flash Attn: {config.inference.flash_attn}")
-    print("-" * 60)
-    print("Measurements:")
-    print(f"  Load Path: {config.measurements.load_path}")
-    print(f"  Save Path: {config.measurements.save_path}")
-    print(f"  Harmful: {config.measurements.harmful_prompts}")
-    print(f"  Harmless: {config.measurements.harmless_prompts}")
-    print("-" * 60)
-    print("Ablation:")
-    print(f"  Method: {config.ablation.method}")
-    print(f"  Sparsify: {config.ablation.sparsify_method}")
-    print(f"  Quantile: {config.ablation.quantile}")
-    print(f"  Global Scale: {config.ablation.global_scale}")
-    print(f"  Overrides: {len(config.ablation.layer_overrides)} layers")
-    print("=" * 60)
+    Output.header("Configuration")
+    
+    Output.subheader("Model Settings")
+    Output.key_value("Model Path", config.model)
+    Output.key_value("Output Dir", config.output_dir or "N/A")
+
+    Output.subheader("Inference")
+    Output.key_value("Device", config.inference.device)
+    Output.key_value("Batch Size", str(config.inference.batch_size))
+    Output.key_value("Max Length", str(config.inference.max_length))
+    Output.key_value("Flash Attention", str(config.inference.flash_attn))
+
+    Output.subheader("Measurements")
+    Output.key_value("Load Path", config.measurements.load_path or "N/A")
+    Output.key_value("Save Path", config.measurements.save_path or "N/A")
+    Output.key_value("Harmful Data", config.measurements.harmful_prompts)
+    Output.key_value("Harmless Data", config.measurements.harmless_prompts)
+    
+    Output.subheader("Ablation Strategy")
+    Output.key_value("Method", config.ablation.method)
+    Output.key_value("Sparsify", config.ablation.sparsify_method)
+    Output.key_value("Quantile", str(config.ablation.quantile))
+    Output.key_value("Global Scale", str(config.ablation.global_scale))
+    Output.key_value("Layer Overrides", f"{len(config.ablation.layer_overrides)} layers")
+
