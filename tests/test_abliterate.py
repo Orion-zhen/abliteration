@@ -8,9 +8,8 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from utils.config import load_config, ModelConfig
-from utils.modifier import modify_tensor_norm_preserved
-from utils.sparsify import sparsify_vector
-from utils.measure import welford_gpu_batched_multilayer_float32
+from utils.math_utils import modify_tensor_norm_preserved, sparsify_tensor
+from utils.model import welford_gpu_batched_multilayer_float32
 
 class TestAbliterationConfig(unittest.TestCase):
     def setUp(self):
@@ -71,7 +70,7 @@ class TestSparsify(unittest.TestCase):
         vec = torch.tensor([1.0, 0.1, 0.05, 0.8])
         # Max is 1.0. Fraction 0.5 -> threshold 0.5.
         # kept: 1.0, 0.8. Zeroed: 0.1, 0.05
-        res = sparsify_vector(vec, method="magnitude", threshold=0.5)
+        res = sparsify_tensor(vec, method="magnitude", threshold=0.5)
         self.assertEqual(res[1], 0.0)
         self.assertEqual(res[3], 0.8)
 

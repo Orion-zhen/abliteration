@@ -1,5 +1,35 @@
 import torch
-import gc
+from typing import Optional, Literal, Union
+
+def magnitude_clip(tensor: torch.Tensor, max_val: float) -> torch.Tensor:
+    """Clips tensor values to [-max_val, max_val] by magnitude preserving sign."""
+    return torch.clamp(tensor, -max_val, max_val)
+
+def remove_orthogonal_projection(refusal_direction: torch.Tensor, orthogonal_base: torch.Tensor) -> torch.Tensor:
+    """
+    Removes the component of refusal_direction containing the projection onto orthogonal_base.
+    
+    formula: v = v - dot(v, u) * u, where u is the normalized orthogonal_base.
+    
+    Args:
+        refusal_direction (torch.Tensor): The vector to modify.
+        orthogonal_base (torch.Tensor): The basis vector to project onto.
+        
+    Returns:
+        torch.Tensor: The modified refusal_direction. result is NOT normalized.
+    """
+    # Ensure base is normalized for projection
+    # Using dim=0 as these are expected to be 1D vectors [hidden_size]
+    # or compatible shapes where dim=0 is the reduction dimension if they are flattened.
+    orthogonal_base_normed = torch.nn.functional.normalize(orthogonal_base, dim=0)
+    
+    # Calculate projection scalar: <v, u>
+    projection = torch.dot(refusal_direction, orthogonal_base_normed)
+    
+    # Remove projection: v - <v, u> * u
+    result = refusal_direction - projection * orthogonal_base_normed
+    
+    return result
 
 def modify_tensor_simple(
     tensor_data: torch.Tensor, 
@@ -28,18 +58,6 @@ def modify_tensor_simple(
     if refusal_dir_float32.dim() > 1:
         refusal_dir_float32 = refusal_dir_float32.view(-1)
         
-    # User's logic:
-    # tensor_float32 -= scale_factor * torch.matmul(
-    #    torch.outer(refusal_dir_float32, refusal_dir_float32), tensor_float32
-    # )
-    
-    # Validation of User Logic:
-    # tensor_data: [out, in]
-    # outer(r, r): [out, out]
-    # matmul([out, out], [out, in]) -> [out, in]
-    # This projects the columns of tensor_data (vectors in output space) onto refusal_dir 
-    # and subtracts that component.
-    
     update = torch.matmul(
         torch.outer(refusal_dir_float32, refusal_dir_float32), 
         tensor_float32
@@ -121,3 +139,76 @@ def modify_tensor_norm_preserved(
             torch.cuda.empty_cache()
 
     return result.detach().clone()
+
+def magnitude_sparsify(vector: torch.Tensor, fraction: float = 0.05) -> torch.Tensor:
+    """
+    Keep components with magnitude >= fraction * max(|vector|).
+    """
+    threshold = fraction * vector.abs().max()
+    return torch.where(vector.abs() >= threshold, vector, torch.zeros_like(vector))
+
+
+def percentile_sparsify(vector: torch.Tensor, percentile: float = 0.95) -> torch.Tensor:
+    """
+    Keep components above the given percentile by magnitude.
+    """
+    threshold = torch.quantile(vector.abs().float(), percentile)
+    return torch.where(vector.abs() >= threshold, vector, torch.zeros_like(vector))
+
+
+def topk_sparsify(vector: torch.Tensor, k: int) -> torch.Tensor:
+    """
+    Keep only the top k components by magnitude.
+    """
+    flat_vector = vector.view(-1)
+    _, indices = torch.topk(torch.abs(flat_vector), min(k, flat_vector.numel()))
+    mask = torch.zeros_like(flat_vector, dtype=torch.bool)
+    mask[indices] = True
+    return vector * mask.view(vector.shape)
+
+
+def soft_threshold_sparsify(vector: torch.Tensor, threshold: float = 0.01) -> torch.Tensor:
+    """
+    Apply soft thresholding (L1 regularization-style sparsification).
+    """
+    return torch.sign(vector) * torch.clamp(torch.abs(vector) - threshold, min=0)
+
+
+def sparsify_tensor(
+    tensor: torch.Tensor,
+    method: Literal["magnitude", "percentile", "topk", "soft_threshold"] = "magnitude",
+    threshold: Optional[float] = None,
+    **kwargs
+) -> torch.Tensor:
+    """
+    Generic entry point for sparsification.
+    """
+    if method == "magnitude":
+        return magnitude_sparsify(tensor, threshold or 0.05)
+    elif method == "percentile":
+        return percentile_sparsify(tensor, threshold or 0.95)
+    elif method == "topk":
+        k = kwargs.get("k", int(0.1 * tensor.numel()))
+        return topk_sparsify(tensor, k)
+    elif method == "soft_threshold":
+        return soft_threshold_sparsify(tensor, threshold or 0.01)
+    else:
+        raise ValueError(f"Unknown method: {method}")
+
+def sparsity_stats(tensor: torch.Tensor) -> dict:
+    """
+    Compute sparsification statistics for a tensor.
+    """
+    total_components = tensor.numel()
+    nonzero_components = torch.count_nonzero(tensor).item()
+    sparsity = 1.0 - (nonzero_components / total_components)
+    
+    abs_tensor = tensor.abs()
+    
+    return {
+        "total_components": total_components,
+        "nonzero_components": nonzero_components,
+        "sparsity": sparsity,
+        "max_magnitude": abs_tensor.max().item(),
+        "mean_magnitude": abs_tensor.mean().item(),
+    }
