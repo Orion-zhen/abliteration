@@ -6,3 +6,4 @@ pandas
 torch
 tqdm
 transformers
+matplotlib

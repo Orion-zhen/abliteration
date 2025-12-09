@@ -35,8 +35,8 @@ def soft_threshold_sparsify(vector: torch.Tensor, threshold: float = 0.01) -> to
     return torch.sign(vector) * torch.clamp(torch.abs(vector) - threshold, min=0)
 
 
-def sparsify_vector(
-    vector: torch.Tensor,
+def sparsify_tensor(
+    tensor: torch.Tensor,
     method: Literal["magnitude", "percentile", "topk", "soft_threshold"] = "magnitude",
     threshold: Optional[float] = None,
     **kwargs
@@ -45,31 +45,31 @@ def sparsify_vector(
     Generic entry point for sparsification.
     """
     if method == "magnitude":
-        return magnitude_sparsify(vector, threshold or 0.05)
+        return magnitude_sparsify(tensor, threshold or 0.05)
     elif method == "percentile":
-        return percentile_sparsify(vector, threshold or 0.95)
+        return percentile_sparsify(tensor, threshold or 0.95)
     elif method == "topk":
-        k = kwargs.get("k", int(0.1 * vector.numel()))
-        return topk_sparsify(vector, k)
+        k = kwargs.get("k", int(0.1 * tensor.numel()))
+        return topk_sparsify(tensor, k)
     elif method == "soft_threshold":
-        return soft_threshold_sparsify(vector, threshold or 0.01)
+        return soft_threshold_sparsify(tensor, threshold or 0.01)
     else:
         raise ValueError(f"Unknown method: {method}")
 
-def sparsity_stats(vector: torch.Tensor) -> dict:
+def sparsity_stats(tensor: torch.Tensor) -> dict:
     """
-    Compute sparsification statistics for a vector.
+    Compute sparsification statistics for a tensor.
     """
-    total_components = vector.numel()
-    nonzero_components = torch.count_nonzero(vector).item()
+    total_components = tensor.numel()
+    nonzero_components = torch.count_nonzero(tensor).item()
     sparsity = 1.0 - (nonzero_components / total_components)
     
-    abs_vector = vector.abs()
+    abs_tensor = tensor.abs()
     
     return {
         "total_components": total_components,
         "nonzero_components": nonzero_components,
         "sparsity": sparsity,
-        "max_magnitude": abs_vector.max().item(),
-        "mean_magnitude": abs_vector.mean().item(),
+        "max_magnitude": abs_tensor.max().item(),
+        "mean_magnitude": abs_tensor.mean().item(),
     }

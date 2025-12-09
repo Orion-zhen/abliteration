@@ -97,23 +97,6 @@ def welford_gpu_batched_multilayer_float32(
     }
     return return_dict
 
-def plot_scores(scores: dict, save_path: str):
-    """Plots refusal scores per layer."""
-    layer_indices = sorted(scores.keys())
-    values = [scores[idx] for idx in layer_indices]
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(layer_indices, values, marker='o', linestyle='-')
-    plt.title("Refusal Direction Quality Score (SNR * Dissimilarity)")
-    plt.xlabel("Layer Index")
-    plt.ylabel("Score")
-    plt.grid(True)
-    
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    plt.savefig(save_path)
-    plt.close()
-    print(f"Refusal score plot saved to {save_path}")
-
 def compute_refusals(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
@@ -194,9 +177,6 @@ def compute_refusals(
         dissimilarity = 1.0 - cos_sim
         score = snr * dissimilarity
         layer_scores[layer] = score
-
-    # Plot scores
-    plot_scores(layer_scores, os.path.join(output_dir, "refusal_scores.png"))
 
     return results, layer_scores
 
