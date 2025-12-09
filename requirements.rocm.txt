@@ -1,0 +1,11 @@
+--extra-index-url https://download.pytorch.org/whl/rocm6.4
+
+accelerate
+bitsandbytes
+datasets
+huggingface-hub
+pandas
+torch
+tqdm
+transformers
+matplotlib
