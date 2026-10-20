@@ -55,6 +55,7 @@ def main():
             harmful_list=harmful_data,
             harmless_list=harmless_data,
             batch_size=config.inference.batch_size,
+            clip=config.measurements.clip,
             output_dir=config.output_dir or ".",  # Handle None safely if used
         )
 
