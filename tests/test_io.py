@@ -4,6 +4,7 @@ import torch
 import os
 import shutil
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from utils.io import resolve_model_paths, copy_model_artifacts, save_measurements, load_measurements, load_data
 
 class TestIO(unittest.TestCase):
@@ -71,6 +72,21 @@ class TestIO(unittest.TestCase):
         args, _ = mock_save.call_args
         self.assertEqual(args[0]["results"], results)
         self.assertEqual(args[0]["layer_scores"], scores)
+
+    @patch("torch.save")
+    def test_save_measurements_in_current_directory(self, mock_save):
+        original_directory = os.getcwd()
+        with TemporaryDirectory() as temp_dir:
+            try:
+                os.chdir(temp_dir)
+                save_measurements({"a": 1}, {"b": 2}, "measurements.pt")
+            finally:
+                os.chdir(original_directory)
+
+        mock_save.assert_called_once_with(
+            {"results": {"a": 1}, "layer_scores": {"b": 2}},
+            "measurements.pt",
+        )
 
     @patch("torch.load")
     @patch("os.path.exists")
