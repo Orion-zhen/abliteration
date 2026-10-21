@@ -106,6 +106,7 @@ def compute_refusals(
     harmless_list: list[str],
     batch_size: int = 32,
     output_dir: str = ".",
+    clip: float = 1.0,
 ) -> Dict[str, torch.Tensor]:
     """
     Computes harmful and harmless means, and derives refusal directions.
@@ -151,6 +152,7 @@ def compute_refusals(
         tokenizer,
         focus_layers,
         batch_size=batch_size,
+        clip=clip,
     )
 
     Output.info("Computing Harmless Means...")
@@ -161,6 +163,7 @@ def compute_refusals(
         tokenizer,
         focus_layers,
         batch_size=batch_size,
+        clip=clip,
     )
 
     results = {}

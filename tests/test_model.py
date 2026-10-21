@@ -63,8 +63,12 @@ class TestModel(unittest.TestCase):
         mock_model.config.num_hidden_layers = 1
         mock_tokenizer = MagicMock()
         
-        results, scores = compute_refusals(mock_model, mock_tokenizer, ["bad"], ["good"], batch_size=1)
-        
+        results, scores = compute_refusals(
+            mock_model, mock_tokenizer, ["bad"], ["good"], batch_size=1, clip=0.25
+        )
+
+        self.assertEqual(mock_welford.call_args_list[0].kwargs["clip"], 0.25)
+        self.assertEqual(mock_welford.call_args_list[1].kwargs["clip"], 0.25)
         self.assertIn("refuse_0", results)
         refusal = results["refuse_0"]
         expected = torch.tensor([1.0, -1.0])
