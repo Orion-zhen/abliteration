@@ -103,7 +103,7 @@ def save_measurements(results: dict, layer_scores: dict, path: str):
     """Saves raw measurements and scores to a file."""
     print(f"Saving measurements to {path}...")
     # Using torch.save for simplicity as it handles dictionary of tensors well
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     data = {"results": results, "layer_scores": layer_scores}
     torch.save(data, path)
     print("Measurements saved.")
