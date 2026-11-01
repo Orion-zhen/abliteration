@@ -47,6 +47,22 @@ class TestConfig(unittest.TestCase):
         with self.assertRaises(ValueError):
             load_config(self.config_path)
 
+    def test_load_config_empty_document(self):
+        with open(self.config_path, "w") as f:
+            f.write("")
+
+        with self.assertRaisesRegex(ValueError, "mapping"):
+            load_config(self.config_path)
+
+    def test_load_config_non_mapping_document(self):
+        for contents in ("- model", "model"):
+            with self.subTest(contents=contents):
+                with open(self.config_path, "w") as f:
+                    f.write(contents)
+
+                with self.assertRaisesRegex(ValueError, "mapping"):
+                    load_config(self.config_path)
+
     def test_load_config_missing_output(self):
         # Missing output_dir AND measurements.save_path
         config_data = {"model": "test"}
