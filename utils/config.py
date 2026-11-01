@@ -49,6 +49,9 @@ def load_config(config_path: str) -> ModelConfig:
     with open(config_path, "r") as f:
         raw_config = yaml.safe_load(f)
 
+    if not isinstance(raw_config, dict):
+        raise ValueError("Config must be a YAML mapping")
+
     # Basic Validation
     if "model" not in raw_config:
         raise ValueError("Config must contain 'model'")
