@@ -17,7 +17,11 @@ def resolve_model_paths(
     Resolves model paths, handling both sharded and single-file models.
     Returns: index_path, model_dir, weight_map, shards
     """
-    index_path = cached_file(model_id, "model.safetensors.index.json")
+    index_path = cached_file(
+        model_id,
+        "model.safetensors.index.json",
+        _raise_exceptions_for_missing_entries=False,
+    )
     model_dir = None
     weight_map = {}
 
