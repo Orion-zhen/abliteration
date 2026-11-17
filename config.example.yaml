@@ -4,7 +4,7 @@ output_dir: "/path/to/my/model"
 inference:
   device: "cuda"
   batch_size: 8
-  max_lengh: 512
+  max_length: 512
   flash_attn: false
 
 measurements:
@@ -22,9 +22,6 @@ ablation:
   top_k: 3 # Top K refusal directions to use.
   global_scale: 1.0 # Global scale factor for the ablation.
   layer_overrides:
-    24: # Layer index
+    24: # Layer index (must be within the model's layer range; Qwen3-0.6B has 28 layers, 0-27)
       scale: 0.5 # Overrides global_scale.
       source_layer: 23 # Use refusal direction calculated from this layer instead of global direction.
-    114:
-      scale: 191
-      source_layer: 514
